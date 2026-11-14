@@ -1,7 +1,7 @@
 import Foundation
 
 // The app talks to these three protocols only. The mock implementations in this folder stand in
-// until the real services are wired up; swap them in `MonetaApp`.
+// until the real services are wired up; `DataSource` picks which set the app runs on.
 
 /// Market data: company lookup, quotes, price history and live ticks.
 protocol PriceService: AnyObject {

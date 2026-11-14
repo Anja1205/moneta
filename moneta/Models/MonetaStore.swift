@@ -70,6 +70,14 @@ final class MonetaStore {
         listen()
     }
 
+    /// Stops live prices and web changes. Called when the app switches data source.
+    func stop() {
+        tickTask?.cancel()
+        changeTask?.cancel()
+        tickTask = nil
+        changeTask = nil
+    }
+
     private func refreshPrices() async {
         await withTaskGroup(of: Void.self) { group in
             for company in watched {

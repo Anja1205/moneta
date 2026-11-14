@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(MonetaStore.self) private var store
+    @AppStorage(DataSource.storageKey) private var source: DataSource = .demo
 
     var body: some View {
         @Bindable var store = store
@@ -65,17 +66,21 @@ struct SettingsView: View {
                     }
 
                     group("Data") {
+                        GlassSegmented(options: DataSource.allCases, selection: $source,
+                                       title: \.label, accessibilityLabel: "Data source")
                         Card {
                             Label {
-                                Text("Prices, company search and signals are live from the Moneta backend, which watches the web through Context.dev and rates each change with an AI agent.")
+                                Text(source.explanation)
                                     .font(.mCallout)
                                     .foregroundStyle(Palette.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             } icon: {
-                                Image(systemName: "server.rack").foregroundStyle(Palette.amber)
+                                Image(systemName: source == .demo ? "testtube.2" : "server.rack")
+                                    .foregroundStyle(Palette.amber)
                             }
                         }
                     }
+                    .sensoryFeedback(.selection, trigger: source) { _, _ in store.hapticsEnabled }
 
                     Text("Named for Juno Moneta, from Latin *monere*, “to warn”.")
                         .font(.mFootnote)
