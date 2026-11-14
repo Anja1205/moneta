@@ -13,10 +13,10 @@ final class SignalStore {
     private(set) var signals: [Signal] = []
     private(set) var isLive = false
     var errorMessage: String?
-    /// Signals that arrived over Realtime this session and haven't been opened yet.
+    /// Signals that arrived over Realtime in the last few seconds.
     private(set) var freshIds: Set<UUID> = []
-    /// Bumped when a fresh signal at or above `Config.alertImpact` arrives.
-    private(set) var alertCount = 0
+    /// Called for each Realtime INSERT whose `is_new` is true.
+    var onNewSignal: ((Signal) -> Void)?
 
     var selectedStockID: UUID?
     var minimumImpact = 1
@@ -47,11 +47,6 @@ final class SignalStore {
     }
 
     // MARK: Loading
-
-    func start() async {
-        await load()
-        await startRealtime()
-    }
 
     /// Stocks by `created_at`, last 200 signals by `detected_at` desc.
     func load() async {
@@ -127,26 +122,35 @@ final class SignalStore {
 
     // MARK: Realtime
 
+    /// One channel: INSERTs on `public.signals`, any change on `public.stocks`.
     func startRealtime() async {
         guard channel == nil else { return }
-        let channel = supabase.channel("moneta-feed")
-        let signalChanges = channel.postgresChange(AnyAction.self, schema: "public", table: "signals")
+        let channel = supabase.channel("moneta-live")
+        let inserts = channel.postgresChange(InsertAction.self, schema: "public", table: "signals")
         let stockChanges = channel.postgresChange(AnyAction.self, schema: "public", table: "stocks")
         self.channel = channel
 
         listeners.append(Task { [weak self] in
-            for await change in signalChanges { self?.handleSignal(change) }
+            for await insert in inserts {
+                guard let signal = try? insert.decodeRecord(as: Signal.self, decoder: JSONDecoder()) else { continue }
+                self?.receive(signal)
+            }
         })
         listeners.append(Task { [weak self] in
-            for await change in stockChanges { self?.handleStock(change) }
+            for await _ in stockChanges {
+                await self?.loadStocks()
+            }
         })
         listeners.append(Task { [weak self] in
-            for await status in channel.statusChange { self?.isLive = status == .subscribed }
+            for await status in channel.statusChange {
+                self?.isLive = status == .subscribed
+            }
         })
 
         do {
             try await channel.subscribeWithError()
         } catch {
+            isLive = false
             errorMessage = "Live updates unavailable. \(error.localizedDescription)"
         }
     }
@@ -163,52 +167,36 @@ final class SignalStore {
         freshIds.remove(signal.id)
     }
 
-    private func handleSignal(_ change: AnyAction) {
-        let decoder = JSONDecoder()
-        switch change {
-        case .insert(let action):
-            guard let signal = try? action.decodeRecord(as: Signal.self, decoder: decoder) else { return }
-            let isFresh = !signals.contains { $0.id == signal.id }
-            upsert(signal)
-            if isFresh {
-                freshIds.insert(signal.id)
-                if signal.clampedImpact >= Config.alertImpact { alertCount += 1 }
-            }
-        case .update(let action):
-            guard let signal = try? action.decodeRecord(as: Signal.self, decoder: decoder) else { return }
-            upsert(signal)
-        case .delete(let action):
-            guard let id = action.oldRecord["id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return }
-            signals.removeAll { $0.id == id }
-            freshIds.remove(id)
+    private func receive(_ signal: Signal) {
+        guard !signals.contains(where: { $0.id == signal.id }) else { return }
+        signals.insert(signal, at: 0)
+        freshIds.insert(signal.id)
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            self?.freshIds.remove(signal.id)
+        }
+        if signal.isNew {
+            onNewSignal?(signal)
         }
     }
 
-    private func handleStock(_ change: AnyAction) {
-        let decoder = JSONDecoder()
-        switch change {
-        case .insert(let action):
-            if let stock = try? action.decodeRecord(as: Stock.self, decoder: decoder) { upsert(stock) }
-        case .update(let action):
-            if let stock = try? action.decodeRecord(as: Stock.self, decoder: decoder) { upsert(stock) }
-        case .delete(let action):
-            guard let id = action.oldRecord["id"]?.stringValue.flatMap(UUID.init(uuidString:)) else { return }
-            stocks.removeAll { $0.id == id }
-            signals.removeAll { $0.stockID == id }
-            if selectedStockID == id { selectedStockID = nil }
+    private func loadStocks() async {
+        do {
+            stocks = try await supabase
+                .from("stocks")
+                .select(Stock.columns)
+                .order("created_at")
+                .execute()
+                .value
+            if let selectedStockID, !stocks.contains(where: { $0.id == selectedStockID }) {
+                self.selectedStockID = nil
+            }
+        } catch {
+            errorMessage = "Couldn’t refresh stocks. \(error.localizedDescription)"
         }
     }
 
     // MARK: Helpers
-
-    private func upsert(_ signal: Signal) {
-        if let index = signals.firstIndex(where: { $0.id == signal.id }) {
-            signals[index] = signal
-        } else {
-            signals.append(signal)
-        }
-        signals = sorted(signals)
-    }
 
     private func upsert(_ stock: Stock) {
         if let index = stocks.firstIndex(where: { $0.id == stock.id }) {
