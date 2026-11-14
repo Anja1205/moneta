@@ -3,7 +3,7 @@ import SwiftUI
 /// Splash → sign in → onboarding → main app, crossfading between them.
 struct AppRootView: View {
     @Environment(AuthService.self) private var auth
-    @AppStorage(DataSource.storageKey) private var source: DataSource = .demo
+    @AppStorage(DataSource.storageKey) private var source: DataSource = .default
 
     private enum Phase: Hashable {
         case splash

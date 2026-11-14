@@ -59,7 +59,8 @@ final class MonetaStore {
         let saved = loadSavedWatchlist()
         var initial = saved ?? []
         if saved == nil {
-            if let account = await prices.accountWatchlist(), !account.isEmpty {
+            // The account's own picks, even if none were added; defaults are for services without accounts.
+            if let account = await prices.accountWatchlist() {
                 initial = account
             } else {
                 initial = await prices.defaultWatchlist()

@@ -1,12 +1,14 @@
 import Foundation
 
-/// Where the app's prices and signals come from. Demo is the default: fictional companies on the
-/// mock services. Live uses the Moneta backend services in this folder.
+/// Where the app's prices and signals come from. Live (the Moneta backend) is the default, so the
+/// watchlist is the one the user picked in onboarding. Demo runs fictional companies on the mock
+/// services and ignores the account's watchlist.
 enum DataSource: String, CaseIterable, Identifiable, Sendable {
     case demo
     case live
 
     static let storageKey = "dataSource"
+    static let `default`: DataSource = .live
 
     var id: Self { self }
 
