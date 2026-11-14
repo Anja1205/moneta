@@ -30,6 +30,8 @@ final class MonetaStore {
     /// Bumped on each new alert, for haptics.
     private(set) var alertCount = 0
     private(set) var isLoaded = false
+    /// Last problem talking to a service, for a banner.
+    var errorMessage: String?
 
     @ObservationIgnored private var tickTask: Task<Void, Never>?
     @ObservationIgnored private var changeTask: Task<Void, Never>?
@@ -46,16 +48,19 @@ final class MonetaStore {
 
     // MARK: Lifecycle
 
-    /// Loads the watchlist and starts live prices and web changes.
-    func start(watchlist: [String] = MockData.initialWatchlist) async {
+    /// Loads the saved watchlist (or the service's default) and starts live prices and web changes.
+    func start() async {
         guard !isLoaded else { return }
         directory = (try? await prices.searchCompanies("")) ?? []
-        for ticker in watchlist {
-            guard let company = directory.first(where: { $0.ticker == ticker }) else { continue }
+        let saved = loadSavedWatchlist()
+        var initial = saved ?? []
+        if saved == nil { initial = await prices.defaultWatchlist() }
+        for company in initial {
             watched.append(company)
-            settings[ticker] = defaultSettings
-            try? await monitor.startWatching(ticker, sources: defaultSettings.sources)
+            settings[company.ticker] = defaultSettings
+            try? await monitor.startWatching(company.ticker, sources: defaultSettings.sources)
         }
+        if saved == nil { saveWatchlist() }
         await refreshPrices()
         await loadRecentSignals(for: watched.map(\.ticker))
         // Today's seeded signals start as already seen except the latest per stock.
@@ -66,9 +71,40 @@ final class MonetaStore {
     }
 
     private func refreshPrices() async {
-        for company in watched {
-            quotes[company.ticker] = try? await prices.quote(for: company.ticker)
-            intraday[company.ticker] = (try? await prices.history(for: company.ticker, range: .day)) ?? []
+        await withTaskGroup(of: Void.self) { group in
+            for company in watched {
+                group.addTask { await self.loadPrice(company, trackIfMissing: true) }
+            }
+        }
+    }
+
+    /// Quote and today's prices for one company. Asks the backend to track it if it has no price.
+    private func loadPrice(_ company: Company, trackIfMissing: Bool) async {
+        var quote = try? await prices.quote(for: company.ticker)
+        if quote == nil, trackIfMissing {
+            try? await prices.track(company)
+            quote = try? await prices.quote(for: company.ticker)
+        }
+        quotes[company.ticker] = quote
+        var series = (try? await prices.history(for: company.ticker, range: .day)) ?? []
+        if let quote, series.last.map({ $0.date < quote.updatedAt }) ?? true {
+            series.append(PricePoint(date: quote.updatedAt, price: quote.price))
+        }
+        intraday[company.ticker] = series
+    }
+
+    // MARK: Persistence
+
+    @ObservationIgnored private lazy var watchlistKey = "watchlist.\(type(of: prices))"
+
+    private func loadSavedWatchlist() -> [Company]? {
+        guard let data = UserDefaults.standard.data(forKey: watchlistKey) else { return nil }
+        return try? JSONDecoder().decode([Company].self, from: data)
+    }
+
+    private func saveWatchlist() {
+        if let data = try? JSONEncoder().encode(watched) {
+            UserDefaults.standard.set(data, forKey: watchlistKey)
         }
     }
 
@@ -99,9 +135,15 @@ final class MonetaStore {
     }
 
     private func apply(_ tick: PriceTick) {
-        intraday[tick.ticker, default: []].append(tick.point)
+        if let last = intraday[tick.ticker]?.last, last.date >= tick.point.date {
+            // Same timestamp again: just update the price.
+            if last.date == tick.point.date { intraday[tick.ticker]?[intraday[tick.ticker]!.count - 1] = tick.point }
+        } else {
+            intraday[tick.ticker, default: []].append(tick.point)
+        }
         if let quote = quotes[tick.ticker] {
-            quotes[tick.ticker] = Quote(price: tick.point.price, previousClose: quote.previousClose, updatedAt: tick.point.date)
+            quotes[tick.ticker] = Quote(price: tick.point.price, previousClose: quote.previousClose,
+                                        updatedAt: tick.point.date, currency: quote.currency)
         }
     }
 
@@ -148,10 +190,16 @@ final class MonetaStore {
     func addStock(_ company: Company, settings watch: WatchSettings) async {
         guard !isWatching(company.ticker) else { return }
         settings[company.ticker] = watch
+        do {
+            try await prices.track(company)
+        } catch {
+            errorMessage = "Couldn’t start tracking \(company.ticker). \(error.localizedDescription)"
+        }
         try? await monitor.startWatching(company.ticker, sources: watch.sources)
         watched.append(company)
-        quotes[company.ticker] = try? await prices.quote(for: company.ticker)
-        intraday[company.ticker] = (try? await prices.history(for: company.ticker, range: .day)) ?? []
+        if !directory.contains(where: { $0.ticker == company.ticker }) { directory.append(company) }
+        saveWatchlist()
+        await loadPrice(company, trackIfMissing: false)
         await loadRecentSignals(for: [company.ticker])
         listen()
     }
@@ -160,6 +208,9 @@ final class MonetaStore {
         watched.removeAll { $0.ticker == ticker }
         signals.removeAll { $0.ticker == ticker }
         settings[ticker] = nil
+        quotes[ticker] = nil
+        intraday[ticker] = nil
+        saveWatchlist()
         try? await monitor.stopWatching(ticker)
         listen()
     }

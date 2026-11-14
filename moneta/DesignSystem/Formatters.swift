@@ -21,6 +21,17 @@ enum Fmt {
         return (pct > 0 ? "+" : "−") + body + "%"
     }
 
+    /// "10:12" today, "Yesterday 22:18", "Fri 14:02" this week, "8 Nov 14:02" before.
+    static func when(_ date: Date, now: Date = .now) -> String {
+        let calendar = Calendar.current
+        if calendar.isDate(date, inSameDayAs: now) { return time(date) }
+        if calendar.isDateInYesterday(date) { return "Yesterday \(time(date))" }
+        if let days = calendar.dateComponents([.day], from: date, to: now).day, days < 6 {
+            return date.formatted(.dateTime.weekday(.abbreviated)) + " " + time(date)
+        }
+        return date.formatted(.dateTime.day().month(.abbreviated)) + " " + time(date)
+    }
+
     /// "10:12" — market times in 24-hour form.
     static func time(_ date: Date) -> String {
         timeFormatter.string(from: date)

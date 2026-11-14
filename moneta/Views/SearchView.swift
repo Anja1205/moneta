@@ -34,6 +34,11 @@ struct SearchView: View {
             .searchable(text: $query, prompt: "Company or ticker")
             .monetaDestinations()
         }
+        #if DEBUG
+        .onAppear {
+            if query.isEmpty, let preset = UserDefaults.standard.string(forKey: "MonetaSearch") { query = preset }
+        }
+        #endif
         .task(id: query) {
             if !query.isEmpty { try? await Task.sleep(for: .milliseconds(200)) }
             results = await store.search(query)
@@ -50,7 +55,7 @@ struct SearchView: View {
                     .font(.mBodyStrong)
                     .foregroundStyle(Palette.text)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(company.ticker) · \(company.exchange) · \(company.sector)")
+                Text(company.detailLine)
                     .font(.mFootnote)
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)

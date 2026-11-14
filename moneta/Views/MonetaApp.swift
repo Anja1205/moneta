@@ -2,11 +2,11 @@ import SwiftUI
 
 @main
 struct MonetaApp: App {
-    /// Swap the mocks for real services here (see Services/ServiceProtocols.swift).
+    /// Live services on the Moneta backend. `MonetaStore.mock()` runs everything on sample data.
     @State private var store = MonetaStore(
-        prices: MockPriceService(),
-        monitor: MockWebMonitorService(),
-        agent: MockSignalAgent()
+        prices: BackendPriceService(),
+        monitor: BackendWebMonitorService(),
+        agent: BackendSignalAgent()
     )
 
     var body: some Scene {

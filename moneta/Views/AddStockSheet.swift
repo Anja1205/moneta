@@ -176,7 +176,7 @@ private struct CompanyResultRow: View {
                         .font(.mBodyStrong)
                         .foregroundStyle(Palette.text)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("\(company.ticker) · \(company.exchange)")
+                    Text(company.tickerLine)
                         .font(.mFootnote)
                         .foregroundStyle(Palette.muted)
                 }

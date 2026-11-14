@@ -1,18 +1,60 @@
 import SwiftUI
 
-/// Company mark: brand-tinted rounded square with the company's symbol.
+/// Company mark: the logo on a white rounded tile when there's a raster logo, otherwise the
+/// company's symbol or initials on a brand-tinted tile.
 struct CompanyMark: View {
     let company: Company
     var size: CGFloat = 36
 
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: size * 0.3, style: .continuous) }
+
+    /// AsyncImage can't draw SVG, so those fall back to initials.
+    private var rasterLogo: URL? {
+        guard let url = company.logoURL, !url.pathExtension.lowercased().hasPrefix("svg") else { return nil }
+        return url
+    }
+
     var body: some View {
+        Group {
+            if let rasterLogo {
+                AsyncImage(url: rasterLogo, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                    if let image = phase.image {
+                        ZStack {
+                            Color.white
+                            image.resizable().scaledToFit().padding(size * 0.14)
+                        }
+                    } else if case .failure = phase {
+                        fallback
+                    } else {
+                        Palette.raised
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(Palette.border, lineWidth: 1))
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var fallback: some View {
         let brand = Color(hex: company.brandHex)
-        Image(systemName: company.symbol)
-            .font(.system(size: size * 0.45, weight: .semibold))
-            .foregroundStyle(brand)
-            .frame(width: size, height: size)
-            .background(Palette.tint(brand).opacity(1.4), in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
-            .accessibilityHidden(true)
+        ZStack {
+            Palette.tint(brand).opacity(1.4)
+            if let symbol = company.symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: size * 0.45, weight: .semibold))
+                    .foregroundStyle(brand)
+            } else {
+                Text(String(company.ticker.filter(\.isLetter).prefix(2)))
+                    .font(.moneta(size: size * 0.38, weight: .bold, relativeTo: .caption))
+                    .foregroundStyle(brand)
+                    .minimumScaleFactor(0.6)
+            }
+        }
     }
 }
 
@@ -48,7 +90,7 @@ struct StockTile: View {
                     .frame(height: 38)
                 if let quote {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(Fmt.price(quote.price))
+                        Text(Fmt.price(quote.price, currency: quote.currency))
                             .font(.moneta(size: 18, weight: .bold, relativeTo: .headline))
                             .monospacedDigit()
                             .foregroundStyle(Palette.text)
@@ -71,7 +113,7 @@ struct StockTile: View {
 
     private var accessibilityText: String {
         var parts = ["\(company.name), \(company.ticker)"]
-        if let quote { parts.append("\(Fmt.price(quote.price)), \(Fmt.percent(quote.changeFraction)) today") }
+        if let quote { parts.append("\(Fmt.price(quote.price, currency: quote.currency)), \(Fmt.percent(quote.changeFraction)) today") }
         if newCount > 0 { parts.append("\(newCount) new signals") }
         return parts.joined(separator: ", ")
     }

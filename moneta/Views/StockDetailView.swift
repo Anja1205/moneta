@@ -39,10 +39,10 @@ struct StockDetailView: View {
                 GlassSegmented(options: ChartRange.allCases, selection: $range, title: \.rawValue, accessibilityLabel: "Chart range")
 
                 VStack(alignment: .leading, spacing: Metrics.spacing) {
-                    SectionTitle(text: "Signal timeline", trailing: signals.isEmpty ? nil : "\(signals.count) today")
+                    SectionTitle(text: "Signal timeline", trailing: signals.isEmpty ? nil : "\(signals.count) recent")
                     if signals.isEmpty {
                         Card {
-                            Text("Nothing yet today. Moneta is watching \(company?.name ?? ticker)'s pages and posts.")
+                            Text("No signals for \(company?.name ?? ticker) in the last few days. Moneta adds them here as soon as the web changes.")
                                 .font(.mCallout)
                                 .foregroundStyle(Palette.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -70,7 +70,7 @@ struct StockDetailView: View {
         }
         .monetaScreen()
         .navigationTitle(company?.name ?? ticker)
-        .navigationSubtitle(company.map { "\($0.ticker) · \($0.exchange)" } ?? ticker)
+        .navigationSubtitle(company?.tickerLine ?? ticker)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -119,7 +119,7 @@ struct StockDetailView: View {
                     HStack(alignment: .center, spacing: 12) { bigPrice(quote); ChangeCapsule(fraction: quote.changeFraction, large: true) }
                     VStack(alignment: .leading, spacing: 8) { bigPrice(quote); ChangeCapsule(fraction: quote.changeFraction, large: true) }
                 }
-                Text("\(Fmt.signedPrice(quote.change)) today · \(signals.count) \(signals.count == 1 ? "signal" : "signals")")
+                Text("\(Fmt.signedPrice(quote.change, currency: quote.currency)) today · \(signals.count) \(signals.count == 1 ? "signal" : "signals")")
                     .font(.mCallout)
                     .monospacedDigit()
                     .foregroundStyle(Palette.secondary)
@@ -133,7 +133,7 @@ struct StockDetailView: View {
     }
 
     private func bigPrice(_ quote: Quote) -> some View {
-        Text(Fmt.price(quote.price))
+        Text(Fmt.price(quote.price, currency: quote.currency))
             .font(.moneta(size: 40, weight: .bold, relativeTo: .largeTitle))
             .monospacedDigit()
             .foregroundStyle(Palette.text)
@@ -170,14 +170,35 @@ struct PriceChartView: View {
         return signals.isEmpty ? r.high : r.high + (r.high - r.low) * 0.22
     }
 
+    /// Signals in the chart's range, thinned so pins never pile up: most important (then newest)
+    /// first, at most 8, each at least 7% of the range apart. The timeline below lists all of them.
     private var visibleSignals: [Signal] {
         guard let first = points.first?.date, let last = points.last?.date else { return [] }
-        return signals.filter { $0.time >= first && $0.time <= last }
+        let inRange = signals.filter { $0.time >= first && $0.time <= last }
+        guard inRange.count > 3 else { return inRange }
+        let minGap = last.timeIntervalSince(first) * 0.07
+        var picked: [Signal] = []
+        for signal in inRange.sorted(by: { ($0.impact, $0.time) > ($1.impact, $1.time) }) {
+            guard picked.count < 8 else { break }
+            if picked.allSatisfy({ abs($0.time.timeIntervalSince(signal.time)) >= minGap }) {
+                picked.append(signal)
+            }
+        }
+        return picked
     }
 
     var body: some View {
         if points.count < 2 {
-            ProgressView().tint(Palette.amber).frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 8) {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(Palette.muted)
+                Text(points.isEmpty ? "No prices for this range yet." : "The chart fills in as new prices arrive.")
+                    .font(.mFootnote)
+                    .foregroundStyle(Palette.muted)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             chart
         }

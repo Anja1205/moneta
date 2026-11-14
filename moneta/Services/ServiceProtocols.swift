@@ -12,6 +12,10 @@ protocol PriceService: AnyObject {
     func history(for ticker: String, range: ChartRange) async throws -> [PricePoint]
     /// Live ticks for the tickers until the stream's consumer stops.
     func ticks(for tickers: [String]) -> AsyncStream<PriceTick>
+    /// Makes sure the backend tracks the company and has a price for it. Called when the user adds it.
+    func track(_ company: Company) async throws
+    /// The watchlist a first launch starts with.
+    func defaultWatchlist() async -> [Company]
 }
 
 /// Watches the open web around each company (news, X, careers, pricing, investor pages, changelogs).

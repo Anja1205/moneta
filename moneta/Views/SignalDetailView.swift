@@ -33,7 +33,7 @@ struct SignalDetailView: View {
                     FlowLayout(spacing: 8) {
                         ImpactTag(impact: signal.impact)
                         CapsuleTag(signal.source.label, systemImage: signal.source.symbol)
-                        CapsuleTag(Fmt.time(signal.time), systemImage: "clock", color: Palette.muted)
+                        CapsuleTag(Fmt.when(signal.time), systemImage: "clock", color: Palette.muted)
                     }
                     Text(signal.title)
                         .font(.mTitle)
@@ -48,7 +48,9 @@ struct SignalDetailView: View {
                 }
 
                 whyCard(signal)
-                whatChanged(signal)
+                if !signal.diff.isEmpty {
+                    whatChanged(signal)
+                }
                 marketReaction(signal, reaction: reaction)
             }
             .padding(.horizontal, Metrics.margin)
@@ -83,7 +85,8 @@ struct SignalDetailView: View {
                     }
                     .buttonStyle(.glassProminent)
                     .tint(Palette.amber)
-                    .accessibilityHint("Opens \(signal.url.host() ?? "the page") in Safari")
+                    .disabled(signal.url == nil)
+                    .accessibilityHint(signal.url.map { "Opens \($0.host() ?? "the page") in Safari" } ?? "No link for this signal")
                 }
             }
             .padding(.horizontal, Metrics.margin)
@@ -91,7 +94,9 @@ struct SignalDetailView: View {
         }
         .sensoryFeedback(.selection, trigger: muted) { _, _ in store.hapticsEnabled }
         .sheet(isPresented: $showingSource) {
-            SafariView(url: signal.url).ignoresSafeArea()
+            if let url = signal.url {
+                SafariView(url: url).ignoresSafeArea()
+            }
         }
         .onAppear { store.markSeen(signal) }
     }

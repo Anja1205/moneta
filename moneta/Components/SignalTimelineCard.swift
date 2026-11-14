@@ -20,7 +20,7 @@ struct SignalTimelineCard: View {
                                 .font(.mSubheadline)
                                 .foregroundStyle(Palette.text)
                         }
-                        Text("\(Fmt.time(signal.time)) · \(signal.source.label)")
+                        Text("\(Fmt.when(signal.time)) · \(signal.source.label)")
                             .font(.mFootnote)
                             .monospacedDigit()
                             .foregroundStyle(Palette.secondary)

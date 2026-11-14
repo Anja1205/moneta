@@ -16,6 +16,14 @@ struct Sparkline: View {
         GeometryReader { proxy in
             let path = linePath(in: proxy.size)
             ZStack {
+                if points.count < 2 {
+                    // Not enough prices yet: a quiet dashed baseline instead of a blank gap.
+                    Path { p in
+                        p.move(to: CGPoint(x: 0, y: proxy.size.height / 2))
+                        p.addLine(to: CGPoint(x: proxy.size.width, y: proxy.size.height / 2))
+                    }
+                    .stroke(Palette.border, style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                }
                 fillPath(path, in: proxy.size)
                     .fill(LinearGradient(colors: [resolvedColor.opacity(0.25), resolvedColor.opacity(0)], startPoint: .top, endPoint: .bottom))
                 path.stroke(resolvedColor, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))

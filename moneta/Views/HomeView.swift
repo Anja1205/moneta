@@ -27,6 +27,36 @@ struct HomeView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     } else if !store.isLoaded {
                         ProgressView().tint(Palette.amber).frame(maxWidth: .infinity, minHeight: 120)
+                    } else {
+                        Card {
+                            Label {
+                                Text("No high signals right now. Moneta shows the next one here the moment the web moves.")
+                                    .font(.mCallout)
+                                    .foregroundStyle(Palette.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } icon: {
+                                Image(systemName: "eye").foregroundStyle(Palette.amber)
+                            }
+                        }
+                    }
+
+                    if let message = store.errorMessage {
+                        Card(fill: Palette.tint(Palette.down), border: Palette.down.opacity(0.4)) {
+                            HStack(alignment: .top, spacing: 10) {
+                                Text(message)
+                                    .font(.mFootnote)
+                                    .foregroundStyle(Palette.text)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 4)
+                                Button {
+                                    store.errorMessage = nil
+                                } label: {
+                                    Image(systemName: "xmark").frame(width: 44, height: 44)
+                                }
+                                .foregroundStyle(Palette.secondary)
+                                .accessibilityLabel("Dismiss")
+                            }
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: Metrics.spacing) {
@@ -68,9 +98,9 @@ struct HomeView: View {
             guard let route else { return }
             router.pending = nil
             switch route {
-            case "stock": path.append(Route.stock("VNTR"))
+            case "stock": if let first = store.watched.first { path.append(Route.stock(first.ticker)) }
             case "signal":
-                if let signal = store.signals.first(where: { $0.ticker == "VNTR" && $0.impact == .high }) { path.append(Route.signal(signal.id)) }
+                if let signal = store.latestWarning ?? store.signals.first { path.append(Route.signal(signal.id)) }
             case "signalLow":
                 if let signal = store.signals.first(where: { $0.ticker == "VNTR" && $0.impact == .low }) { path.append(Route.signal(signal.id)) }
             default: break
@@ -151,7 +181,7 @@ private struct LatestWarningCard: View {
                     Text(signal.ticker)
                         .font(.mSubheadline)
                         .foregroundStyle(Palette.amber)
-                    Text("· \(Fmt.time(signal.time)) · \(signal.source.label)")
+                    Text("· \(Fmt.when(signal.time)) · \(signal.source.label)")
                         .font(.mFootnote)
                         .monospacedDigit()
                         .foregroundStyle(Palette.secondary)

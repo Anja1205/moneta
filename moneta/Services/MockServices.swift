@@ -192,6 +192,12 @@ final class MockPriceService: PriceService {
     func ticks(for tickers: [String]) -> AsyncStream<PriceTick> {
         market.subscribe(Set(tickers))
     }
+
+    func track(_ company: Company) async throws {}
+
+    func defaultWatchlist() async -> [Company] {
+        MockData.initialWatchlist.compactMap { ticker in MockData.companies.first { $0.ticker == ticker } }
+    }
 }
 
 /// Seeded changes for today, plus a new one every 18–30 seconds for a random watched company.

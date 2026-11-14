@@ -67,7 +67,7 @@ struct SettingsView: View {
                     group("Data") {
                         Card {
                             Label {
-                                Text("Moneta is running on sample data. Live prices, web monitoring and the AI agent plug in through your own backend.")
+                                Text("Prices, company search and signals are live from the Moneta backend, which watches the web through Context.dev and rates each change with an AI agent.")
                                     .font(.mCallout)
                                     .foregroundStyle(Palette.secondary)
                                     .fixedSize(horizontal: false, vertical: true)

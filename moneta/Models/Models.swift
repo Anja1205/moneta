@@ -1,17 +1,30 @@
 import Foundation
 
 /// A listed company Moneta can watch.
-nonisolated struct Company: Identifiable, Hashable, Sendable {
+nonisolated struct Company: Identifiable, Hashable, Codable, Sendable {
     let ticker: String
     let name: String
-    let exchange: String
-    let sector: String
+    /// Empty when the data source doesn't say.
+    var exchange: String = ""
+    var sector: String = ""
     /// Brand colour for logos and accents.
-    let brandHex: UInt32
-    /// SF Symbol used as the company mark in mock data.
-    let symbol: String
+    var brandHex: UInt32 = 0xFFB547
+    /// SF Symbol for the company mark when there's no logo (mock data).
+    var symbol: String? = nil
+    var logoURL: URL? = nil
+    var domain: String? = nil
 
     var id: String { ticker }
+
+    /// "NVDA · NASDAQ" (or just the ticker).
+    var tickerLine: String {
+        [ticker, exchange].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// "NVDA · NASDAQ · Semiconductors", skipping what's unknown.
+    var detailLine: String {
+        [ticker, exchange, sector].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
 }
 
 /// Where on the web a change was seen.
@@ -116,7 +129,7 @@ nonisolated struct WebChange: Identifiable, Hashable, Sendable {
     let source: SignalSource
     let detectedAt: Date
     let title: String
-    let url: URL
+    let url: URL?
     let diff: [DiffLine]
     /// Context the monitor knows, e.g. "Page unchanged for 41 days".
     let facts: [String]
@@ -131,7 +144,7 @@ nonisolated struct Signal: Identifiable, Hashable, Sendable {
     let time: Date
     let title: String
     let why: String
-    let url: URL
+    let url: URL?
     let facts: [String]
     let diff: [DiffLine]
 }
@@ -162,6 +175,7 @@ nonisolated struct Quote: Hashable, Sendable {
     let price: Double
     let previousClose: Double
     let updatedAt: Date
+    var currency: String = "USD"
 
     var change: Double { price - previousClose }
     var changeFraction: Double { previousClose == 0 ? 0 : change / previousClose }
