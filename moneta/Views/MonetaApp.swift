@@ -3,8 +3,7 @@ import UIKit
 
 @main
 struct MonetaApp: App {
-    /// Demo data by default; Settings switches to the Moneta backend.
-    @AppStorage(DataSource.storageKey) private var source: DataSource = .demo
+    @State private var auth = AuthService()
 
     init() {
         // Navigation titles in Quicksand too (system rounded if it didn't load).
@@ -16,30 +15,24 @@ struct MonetaApp: App {
         let appearance = UINavigationBar.appearance()
         appearance.largeTitleTextAttributes = [.font: font(34, .largeTitle), .foregroundColor: UIColor(Palette.text)]
         appearance.titleTextAttributes = [.font: font(17, .headline), .foregroundColor: UIColor(Palette.text)]
+
+        // Sign in / Create account picker.
+        let segmented = UISegmentedControl.appearance()
+        segmented.selectedSegmentTintColor = UIColor(Brand.gold)
+        segmented.setTitleTextAttributes([.foregroundColor: UIColor.black,
+                                          .font: UIFont.systemFont(ofSize: 14, weight: .semibold)], for: .selected)
+        segmented.setTitleTextAttributes([.foregroundColor: UIColor.white.withAlphaComponent(0.7),
+                                          .font: UIFont.systemFont(ofSize: 14, weight: .medium)], for: .normal)
     }
 
     var body: some Scene {
         WindowGroup {
-            StoreHost(source: source)
-                .id(source)
+            // Splash, sign in, onboarding, then the main app (with its store) once onboarded.
+            AppRootView()
+                .environment(auth)
+                .task { await auth.start() }
                 .preferredColorScheme(.dark)
         }
-    }
-}
-
-/// Owns the store for one data source. A new source gets a new host, so a fresh store.
-private struct StoreHost: View {
-    @State private var store: MonetaStore
-
-    init(source: DataSource) {
-        _store = State(initialValue: source.makeStore())
-    }
-
-    var body: some View {
-        RootView()
-            .environment(store)
-            .task { await store.start() }
-            .onDisappear { store.stop() }
     }
 }
 

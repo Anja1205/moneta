@@ -35,11 +35,14 @@ final class MonetaStore {
 
     @ObservationIgnored private var tickTask: Task<Void, Never>?
     @ObservationIgnored private var changeTask: Task<Void, Never>?
+    /// Signed-in user; keys the saved watchlist so users don't share one.
+    @ObservationIgnored private let userID: UUID?
 
-    init(prices: PriceService, monitor: WebMonitorService, agent: SignalAgent) {
+    init(prices: PriceService, monitor: WebMonitorService, agent: SignalAgent, userID: UUID? = nil) {
         self.prices = prices
         self.monitor = monitor
         self.agent = agent
+        self.userID = userID
     }
 
     static func mock() -> MonetaStore {
@@ -48,13 +51,20 @@ final class MonetaStore {
 
     // MARK: Lifecycle
 
-    /// Loads the saved watchlist (or the service's default) and starts live prices and web changes.
+    /// Loads the saved watchlist (or the account's watchlist on the backend, or the service's
+    /// default) and starts live prices and web changes.
     func start() async {
         guard !isLoaded else { return }
         directory = (try? await prices.searchCompanies("")) ?? []
         let saved = loadSavedWatchlist()
         var initial = saved ?? []
-        if saved == nil { initial = await prices.defaultWatchlist() }
+        if saved == nil {
+            if let account = await prices.accountWatchlist(), !account.isEmpty {
+                initial = account
+            } else {
+                initial = await prices.defaultWatchlist()
+            }
+        }
         for company in initial {
             watched.append(company)
             settings[company.ticker] = defaultSettings
@@ -70,7 +80,7 @@ final class MonetaStore {
         listen()
     }
 
-    /// Stops live prices and web changes. Called when the app switches data source.
+    /// Stops live prices and web changes. Called when the app switches data source or signs out.
     func stop() {
         tickTask?.cancel()
         changeTask?.cancel()
@@ -103,7 +113,8 @@ final class MonetaStore {
 
     // MARK: Persistence
 
-    @ObservationIgnored private lazy var watchlistKey = "watchlist.\(type(of: prices))"
+    @ObservationIgnored private lazy var watchlistKey =
+        ["watchlist", "\(type(of: prices))", userID?.uuidString].compactMap { $0 }.joined(separator: ".")
 
     private func loadSavedWatchlist() -> [Company]? {
         guard let data = UserDefaults.standard.data(forKey: watchlistKey) else { return nil }
@@ -193,6 +204,11 @@ final class MonetaStore {
 
     func search(_ query: String) async -> [Company] {
         (try? await prices.searchCompanies(query)) ?? []
+    }
+
+    /// Like `search` but passes errors on, for screens that show an error state.
+    func searchCompanies(_ query: String) async throws -> [Company] {
+        try await prices.searchCompanies(query)
     }
 
     func addStock(_ company: Company, settings watch: WatchSettings) async {

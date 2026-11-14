@@ -13,8 +13,15 @@ nonisolated struct Company: Identifiable, Hashable, Codable, Sendable {
     var symbol: String? = nil
     var logoURL: URL? = nil
     var domain: String? = nil
+    /// Where a search hit came from: "catalog" or "context.dev" (live web).
+    var source: String? = nil
+    /// Position in the Top 20.
+    var rank: Int? = nil
 
     var id: String { ticker }
+
+    /// Found live on the web by Context.dev rather than in Moneta's catalog.
+    var isLiveWeb: Bool { source == "context.dev" }
 
     /// "NVDA · NASDAQ" (or just the ticker).
     var tickerLine: String {

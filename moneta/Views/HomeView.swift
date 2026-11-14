@@ -74,7 +74,7 @@ struct HomeView: View {
                                 .buttonStyle(PressableStyle())
                             }
                             Button {
-                                router.addStock = AddStockTarget(company: nil)
+                                router.showStockSearch = true
                             } label: {
                                 AddStockTile()
                             }

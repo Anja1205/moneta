@@ -21,6 +21,8 @@ struct AddStockTarget: Identifiable {
 final class AppRouter {
     var tab: AppTab = .home
     var addStock: AddStockTarget?
+    /// The stock search sheet (watchlist mode), opened from Home's "+".
+    var showStockSearch = false
     #if DEBUG
     /// Launch-argument route for the Home stack to push (see LaunchRoute).
     var pending: String?

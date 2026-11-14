@@ -29,6 +29,9 @@ struct RootView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $router.showStockSearch) {
+            StockSearchView(mode: .watchlist(store))
+        }
         .sensoryFeedback(.impact(weight: .medium), trigger: store.alertCount) { _, _ in store.hapticsEnabled }
         #if DEBUG
         .task(id: store.isLoaded) {
@@ -53,5 +56,6 @@ struct RootView: View {
 #Preview {
     RootView()
         .environment(MonetaStore.preview())
+        .environment(AuthService())
         .preferredColorScheme(.dark)
 }

@@ -10,6 +10,15 @@
       "Base",
     ],
   },
+  "packages": [
+    {
+      "kind": "remote",
+      "repository": "https://github.com/supabase/supabase-swift",
+      "version": {
+        "up-to-next-major-version": "2.55.0",
+      },
+    },
+  ],
   "files": [
     { "kind": "folder", "path": "moneta", "target-membership": [ "moneta" ] },
     { "kind": "folder", "path": "Shared", "target-membership": [ "MonetaWidgetExtension", "moneta" ] },
@@ -55,6 +64,13 @@
             "cp -R \"${SRC}\" \"${DST}/\"",
             "",
           ],
+        },
+      ],
+      "package-product-members": [
+        {
+          "package": "supabase-swift",
+          "product-name": "Supabase",
+          "build-phase": { "build-phase": "frameworks" },
         },
       ],
       "build-settings": {

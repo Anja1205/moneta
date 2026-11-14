@@ -33,7 +33,7 @@ enum Metrics {
     static let spacing: CGFloat = 14
 }
 
-extension Color {
+nonisolated extension Color {
     /// `Color(hex: 0xFFB547)`.
     init(hex: UInt32, opacity: Double = 1) {
         self.init(

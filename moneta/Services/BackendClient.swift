@@ -1,6 +1,8 @@
 import Foundation
+import Supabase
 
-/// Minimal Supabase REST + Edge Functions client over URLSession (no packages).
+/// Minimal Supabase REST + Edge Functions client over URLSession. Edge Functions run as the
+/// signed-in user (their access token) so per-user functions like `add-stock` know who's calling.
 final class BackendClient {
     private let base: URL
     private let key: String
@@ -30,13 +32,13 @@ final class BackendClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
         request.timeoutInterval = 45
-        authorize(&request)
+        authorize(&request, token: supabase.auth.currentSession?.accessToken)
         return try await send(request)
     }
 
-    private func authorize(_ request: inout URLRequest) {
+    private func authorize(_ request: inout URLRequest, token: String? = nil) {
         request.setValue(key, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(token ?? key)", forHTTPHeaderField: "Authorization")
     }
 
     private func send<T: Decodable>(_ request: URLRequest) async throws -> T {

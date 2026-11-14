@@ -1,4 +1,5 @@
 import Foundation
+import Supabase
 
 /// Real market data from the Moneta backend (Supabase):
 /// - search: `companies` (Top 20) and the `search-companies` function
@@ -25,7 +26,7 @@ final class BackendPriceService: PriceService {
 
         struct Body: Encodable { let query: String }
         struct Response: Decodable {
-            struct Hit: Decodable { let ticker: String; let name: String; let domain: String? }
+            struct Hit: Decodable { let ticker: String; let name: String; let domain: String?; let source: String? }
             let results: [Hit]
         }
         let response: Response = try await client.invoke("search-companies", body: Body(query: q))
@@ -35,6 +36,7 @@ final class BackendPriceService: PriceService {
         return hits.map { hit in
             let ticker = hit.ticker.uppercased()
             var company = Company(ticker: ticker, name: hit.name, domain: hit.domain)
+            company.source = hit.source
             if let brand = branding?[ticker] {
                 company.logoURL = brand.logoURL
                 company.brandHex = brand.brandHex ?? company.brandHex
@@ -81,6 +83,38 @@ final class BackendPriceService: PriceService {
 
     func defaultWatchlist() async -> [Company] {
         Array(((try? await featured()) ?? []).prefix(4))
+    }
+
+    /// The signed-in user's `watchlist` rows (RLS limits them to the user), oldest first.
+    func accountWatchlist() async -> [Company]? {
+        guard supabase.auth.currentSession != nil else { return nil }
+        nonisolated struct Row: Decodable, Sendable {
+            nonisolated struct Stock: Decodable, Sendable {
+                let ticker: String
+                let name: String?
+                let domain: String?
+                let logo_url: String?
+                let brand_color: String?
+            }
+            let stocks: Stock?
+        }
+        do {
+            let rows: [Row] = try await supabase
+                .from("watchlist")
+                .select("stocks(ticker,name,domain,logo_url,brand_color)")
+                .order("created_at")
+                .execute()
+                .value
+            return rows.compactMap(\.stocks).map { stock in
+                Company(
+                    ticker: stock.ticker.uppercased(), name: stock.name ?? stock.ticker.uppercased(),
+                    brandHex: stock.brand_color.flatMap(UInt32.init(hexString:)) ?? 0xFFB547,
+                    logoURL: stock.logo_url.flatMap(URL.init(string:)), domain: stock.domain
+                )
+            }
+        } catch {
+            return nil
+        }
     }
 
     // MARK: Quotes

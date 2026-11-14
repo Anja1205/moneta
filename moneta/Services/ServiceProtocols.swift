@@ -16,6 +16,13 @@ protocol PriceService: AnyObject {
     func track(_ company: Company) async throws
     /// The watchlist a first launch starts with.
     func defaultWatchlist() async -> [Company]
+    /// The signed-in account's watchlist on the backend (filled during onboarding).
+    /// `nil` when the service has no accounts.
+    func accountWatchlist() async -> [Company]?
+}
+
+extension PriceService {
+    func accountWatchlist() async -> [Company]? { nil }
 }
 
 /// Watches the open web around each company (news, X, careers, pricing, investor pages, changelogs).

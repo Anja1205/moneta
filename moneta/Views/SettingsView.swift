@@ -2,7 +2,9 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(MonetaStore.self) private var store
+    @Environment(AuthService.self) private var auth
     @AppStorage(DataSource.storageKey) private var source: DataSource = .demo
+    @State private var confirmSignOut = false
 
     var body: some View {
         @Bindable var store = store
@@ -10,6 +12,10 @@ struct SettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    group("Account") {
+                        accountCard
+                    }
+
                     group("Alerts for new stocks") {
                         GlassSegmented(options: AlertLevel.allCases, selection: $store.defaultSettings.alertLevel,
                                        title: \.label, accessibilityLabel: "Default alert level")
@@ -98,6 +104,69 @@ struct SettingsView: View {
         }
     }
 
+    private var accountCard: some View {
+        Card(padding: 6) {
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Text(initials)
+                        .font(.number(16, weight: .bold))
+                        .foregroundStyle(.black)
+                        .frame(width: 40, height: 40)
+                        .background(Brand.gold, in: Circle())
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(auth.displayName.isEmpty ? "Your account" : auth.displayName)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Palette.text)
+                            .lineLimit(1)
+                        if let email = auth.email {
+                            Text(email)
+                                .font(.subheadline)
+                                .foregroundStyle(Palette.muted)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 60)
+                .accessibilityElement(children: .combine)
+
+                Divider().overlay(Palette.border)
+
+                Button(role: .destructive) {
+                    confirmSignOut = true
+                } label: {
+                    HStack {
+                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                            .font(.body.weight(.semibold))
+                        Spacer()
+                        if auth.isLoading { ProgressView().tint(Brand.bearish) }
+                    }
+                    .foregroundStyle(Brand.bearish)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 50)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(auth.isLoading)
+            }
+        }
+        .confirmationDialog("Sign out of Moneta?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+            Button("Sign out", role: .destructive) {
+                Task { await auth.signOut() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var initials: String {
+        let source = auth.displayName.isEmpty ? (auth.email ?? "?") : auth.displayName
+        let letters = source.split(separator: " ").prefix(2).compactMap(\.first)
+        return String(letters).uppercased()
+    }
+
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -129,5 +198,6 @@ struct SettingsView: View {
 #Preview {
     SettingsView()
         .environment(MonetaStore.preview())
+        .environment(AuthService())
         .preferredColorScheme(.dark)
 }
