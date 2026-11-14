@@ -108,11 +108,15 @@ struct SignalDetailView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let description = signal.description, !description.isEmpty {
-                Text(description)
-                    .font(Theme.body)
-                    .foregroundStyle(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if let description = signal.description?.trimmingCharacters(in: .whitespacesAndNewlines), !description.isEmpty {
+                if signal.sourceKind.isPageChange {
+                    WhatChangedBlock(text: description)
+                } else {
+                    Text(description)
+                        .font(Theme.body)
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Label(publishedText, systemImage: "clock")
@@ -125,7 +129,10 @@ struct SignalDetailView: View {
     private var actions: some View {
         HStack(spacing: 10) {
             if sourceURL != nil {
-                PrimaryButton(title: "Open source", systemImage: "safari") { showingSource = true }
+                PrimaryButton(
+                    title: signal.sourceKind.isPageChange ? "Open page" : "Open source",
+                    systemImage: "safari"
+                ) { showingSource = true }
             }
 
             Group {
@@ -163,6 +170,38 @@ struct SignalDetailView: View {
             return "Detected \(date.formatted(date: .abbreviated, time: .shortened)) · \(RelativeTime.string(for: date))"
         }
         return "Publish time unknown"
+    }
+}
+
+/// The page-change text as a quote: gold left rule on a slightly lighter card.
+private struct WhatChangedBlock: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel("What changed", color: Theme.gold)
+            HStack(alignment: .top, spacing: 12) {
+                Capsule()
+                    .fill(Theme.gold)
+                    .frame(width: 3)
+                    .accessibilityHidden(true)
+                Text(text)
+                    .font(Theme.body)
+                    .italic()
+                    .foregroundStyle(Theme.textPrimary.opacity(0.88))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(14)
+            .background(Theme.cardRaised, in: RoundedRectangle(cornerRadius: Theme.smallRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.smallRadius, style: .continuous)
+                    .strokeBorder(Theme.stroke)
+            )
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -118,22 +118,28 @@ nonisolated struct StockSentiment: Decodable, Hashable, Sendable {
         bearish7d = c.flexibleInt(.bearish7d) ?? 0
     }
 
+    /// 0–25 Very bearish, 26–45 Bearish, 46–55 Neutral, 56–75 Bullish, 76–100 Very bullish.
     var label: String {
         switch score {
-        case ..<20: "Very bearish"
-        case ..<40: "Bearish"
-        case ...60: "Neutral"
-        case ...80: "Bullish"
+        case ...25: "Very bearish"
+        case ...45: "Bearish"
+        case ...55: "Neutral"
+        case ...75: "Bullish"
         default: "Very bullish"
         }
     }
 
     var direction: Direction {
         switch score {
-        case ..<40: .bearish
-        case ...60: .neutral
+        case ...45: .bearish
+        case ...55: .neutral
         default: .bullish
         }
+    }
+
+    /// "12 signals in 24h · 5 bullish · 3 bearish (7d)"
+    var summary: String {
+        "\(signals24h) \(signals24h == 1 ? "signal" : "signals") in 24h · \(bullish7d) bullish · \(bearish7d) bearish (7d)"
     }
 }
 
@@ -154,9 +160,22 @@ nonisolated struct Holding: Hashable, Sendable {
         return shares * (price - avgCost)
     }
 
+    /// Total gain/loss in percent: market value vs shares × avg_cost.
     func gainPct(at price: Double?) -> Double? {
         guard let price, let avgCost, avgCost != 0, !isEmpty else { return nil }
         return (price - avgCost) / avgCost * 100
+    }
+
+    /// shares × avg_cost.
+    var costBasis: Double? {
+        guard let shares, shares != 0, let avgCost else { return nil }
+        return shares * avgCost
+    }
+
+    /// Today's move on the position: shares × price_change.
+    func todayChange(_ priceChange: Double?) -> Double? {
+        guard let shares, shares != 0, let priceChange else { return nil }
+        return shares * priceChange
     }
 }
 
@@ -202,13 +221,21 @@ nonisolated enum SourceKind: String, Codable, Sendable {
         self = SourceKind(rawValue: raw) ?? .unknown
     }
 
+    /// A change detected on a watched web page rather than a news story.
+    var isPageChange: Bool {
+        switch self {
+        case .irPage, .demo, .careers, .pricing: true
+        case .news, .unknown: false
+        }
+    }
+
     var label: String {
         switch self {
         case .news: "News"
-        case .irPage: "Investor Relations"
+        // Backend-generated page changes ("demo") read exactly like investor page changes.
+        case .irPage, .demo: "Investor page"
         case .careers: "Careers"
         case .pricing: "Pricing"
-        case .demo: "Demo"
         case .unknown: "Web"
         }
     }
@@ -216,10 +243,9 @@ nonisolated enum SourceKind: String, Codable, Sendable {
     var symbol: String {
         switch self {
         case .news: "newspaper"
-        case .irPage: "building.columns"
+        case .irPage, .demo: "building.columns"
         case .careers: "person.2"
         case .pricing: "tag"
-        case .demo: "sparkles"
         case .unknown: "globe"
         }
     }

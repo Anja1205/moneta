@@ -16,7 +16,7 @@ enum DemoMode {
     /// a `-bottom` suffix to start scrolled to the end.
     static var screen: String {
         let raw = UserDefaults.standard.string(forKey: "MonetaDemoScreen")?.lowercased() ?? "watchlist"
-        return raw.replacingOccurrences(of: "-bottom", with: "")
+        return raw.replacingOccurrences(of: "-bottom", with: "").replacingOccurrences(of: "-mid", with: "").replacingOccurrences(of: "-low", with: "")
     }
 
     static var startAtBottom: Bool {
@@ -24,7 +24,14 @@ enum DemoMode {
     }
 
     /// Scroll anchor for screenshot runs; nil (normal) outside them.
-    static var scrollAnchor: UnitPoint? { startAtBottom ? .bottom : nil }
+    static var scrollAnchor: UnitPoint? {
+        guard isMain else { return nil }
+        let raw = UserDefaults.standard.string(forKey: "MonetaDemoScreen") ?? ""
+        if raw.hasSuffix("-bottom") { return .bottom }
+        if raw.hasSuffix("-mid") { return UnitPoint(x: 0.5, y: 0.3) }
+        if raw.hasSuffix("-low") { return UnitPoint(x: 0.5, y: 0.52) }
+        return nil
+    }
 
     private static func iso(_ minutesAgo: Double) -> String {
         Date().addingTimeInterval(-minutesAgo * 60).formatted(.iso8601)
@@ -76,7 +83,7 @@ enum DemoMode {
             {"id":"\(UUID().uuidString)","stock_id":"\(stock.id.uuidString)","story_id":"\(UUID().uuidString)",
              "ticker":"\(stock.ticker)","stock_name":"\(stock.name)","source_kind":"\(kind)","title":"\(title)",
              "description":"A longer description of the story so the detail screen has something to wrap across several lines on small phones.",
-             "url":"https://example.com/story","image_url":null,"source_name":"\(kind == "ir_page" ? "Investor Relations" : "Reuters")",
+             "url":"https://example.com/story","image_url":null,"source_name":\(kind == "news" ? "\"Reuters\"" : "null"),
              "published_at":"\(iso(minutes + 2))","detected_at":"\(iso(minutes))","impact":\(impact),
              "direction":"\(direction)","why":"\(why)","is_new":true}
             """

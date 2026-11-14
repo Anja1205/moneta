@@ -16,9 +16,9 @@ struct WatchlistView: View {
                         ErrorBanner(message: message) { store.errorMessage = nil }
                             .watchlistRow()
                     }
-                    if !store.stocks.isEmpty {
+                    if !store.portfolioValue.isEmpty {
                         PortfolioHeader()
-                            .watchlistRow(top: 4, bottom: 10)
+                            .watchlistRow(top: 4, bottom: Theme.cardSpacing / 2)
                     }
                     if store.stocks.isEmpty {
                         WatchlistEmptyState(isLoading: store.isLoading) { showingAddStock = true }
@@ -34,6 +34,7 @@ struct WatchlistView: View {
                                     latest: latest,
                                     sentiment: store.sentiment[stock.id],
                                     flash: store.priceFlash[stock.id],
+                                    holding: store.holding(for: stock),
                                     isFresh: latest.map { store.freshIds.contains($0.id) } ?? false,
                                     now: context.date
                                 )
@@ -127,6 +128,7 @@ struct WatchlistView: View {
             switch DemoMode.screen {
             case "stock", "position", "callout": path.append(store.stocks[0])
             case "stock2": path.append(store.stocks[2])
+            case "nopos": path.append(store.stocks[3])
             case "signal":
                 if let signal = store.signals.first(where: { $0.stockID == store.stocks[1].id }) { path.append(signal) }
             case "search": showingAddStock = true
@@ -149,86 +151,224 @@ struct WatchlistView: View {
 
 // MARK: - Portfolio header
 
-/// Top of the watchlist: total position value (when the user entered shares) or a count of watched
-/// stocks, with the day's average move and a faint gold glow.
+/// Top of the watchlist when the user owns anything: total value, today's change, total gain/loss,
+/// and an allocation bar in each holding's brand colour. Mixed currencies use the largest one.
 private struct PortfolioHeader: View {
     @Environment(SignalStore.self) private var store
 
-    /// Day change of the portfolio in the main currency, from each position's `price_change`.
-    private var dayChange: (amount: Double, percent: Double)? {
-        guard let currency = mainCurrency else { return nil }
-        var change = 0.0, previous = 0.0
-        for stock in store.stocks where stock.currencyCode == currency {
-            guard let shares = store.holding(for: stock).shares, shares != 0,
-                  let price = stock.price, let delta = stock.priceChange else { continue }
-            change += shares * delta
-            previous += shares * (price - delta)
-        }
-        guard previous > 0 else { return nil }
-        return (change, change / previous * 100)
+    private struct Slice: Identifiable {
+        let stock: Stock
+        let value: Double
+        var id: UUID { stock.id }
+        var color: Color { stock.brandColor.map(Color.init(hex:)) ?? Theme.gold }
     }
 
-    /// The currency with the largest total, so mixed portfolios still show one headline number.
-    private var mainCurrency: String? {
+    /// The currency with the largest total.
+    private var currency: String? {
         store.portfolioValue.max { $0.value < $1.value }?.key
     }
 
-    /// Average of today's percent moves across watched stocks that have one.
-    private var averageMove: Double? {
-        let moves = store.stocks.compactMap(\.priceChangePct)
-        guard !moves.isEmpty else { return nil }
-        return moves.reduce(0, +) / Double(moves.count)
+    private var slices: [Slice] {
+        guard let currency else { return [] }
+        return store.stocks
+            .filter { $0.currencyCode == currency }
+            .compactMap { stock in
+                store.holding(for: stock).marketValue(at: stock.price).map { Slice(stock: stock, value: $0) }
+            }
+            .filter { $0.value > 0 }
+            .sorted { $0.value > $1.value }
     }
 
+    private var total: Double { slices.reduce(0) { $0 + $1.value } }
+
+    /// Sum of shares × price_change, as money and as % of yesterday's value.
+    private var today: (amount: Double, percent: Double)? {
+        var change = 0.0, previous = 0.0, any = false
+        for slice in slices {
+            guard let delta = slice.stock.priceChange, let shares = store.holding(for: slice.stock).shares else { continue }
+            any = true
+            change += shares * delta
+            previous += slice.value - shares * delta
+        }
+        guard any, previous > 0 else { return nil }
+        return (change, change / previous * 100)
+    }
+
+    /// Market value minus cost basis, over holdings that have an average cost.
+    private var gain: (amount: Double, percent: Double)? {
+        var value = 0.0, cost = 0.0
+        for slice in slices {
+            guard let basis = store.holding(for: slice.stock).costBasis else { continue }
+            value += slice.value
+            cost += basis
+        }
+        guard cost > 0 else { return nil }
+        return (value - cost, (value - cost) / cost * 100)
+    }
+
+    private var otherCurrencies: Int { max(store.portfolioValue.count - 1, 0) }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let currency = mainCurrency, let total = store.portfolioValue[currency] {
-                SectionLabel("Your positions")
-                Text(PriceFormat.money(total, currency: currency))
-                    .font(Theme.number(.largeTitle, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .contentTransition(.numericText(value: total))
-                    .animation(.snappy, value: total)
-                if let dayChange {
-                    HStack(spacing: 8) {
-                        Text(PriceFormat.signedMoney(dayChange.amount, currency: currency))
-                            .font(Theme.number(.subheadline))
-                            .monospacedDigit()
-                            .foregroundStyle(dayChange.amount >= 0 ? Theme.bullish : Theme.bearish)
-                            .contentTransition(.numericText(value: dayChange.amount))
-                        PriceChangePill(percent: dayChange.percent)
-                        Text("today")
-                            .font(Theme.caption)
-                            .foregroundStyle(Theme.textTertiary)
+        if let currency, !slices.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    SectionLabel("Your portfolio")
+                    Text(PriceFormat.money(total, currency: currency))
+                        .font(Theme.number(.largeTitle, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                        .contentTransition(.numericText(value: total))
+                        .animation(.snappy, value: total)
+                }
+                .background(alignment: .leading) {
+                    GoldGlow(width: 260, height: 110, intensity: 0.6)
+                        .offset(x: -50)
+                }
+
+                VStack(spacing: 8) {
+                    if let today {
+                        changeRow("Today", amount: today.amount, percent: today.percent, currency: currency)
+                    }
+                    if let gain {
+                        changeRow("Total gain/loss", amount: gain.amount, percent: gain.percent, currency: currency)
                     }
                 }
-            } else {
-                SectionLabel("Watching")
-                Text("\(store.stocks.count) \(store.stocks.count == 1 ? "stock" : "stocks")")
-                    .font(Theme.number(.largeTitle, weight: .bold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .contentTransition(.numericText(value: Double(store.stocks.count)))
-                    .animation(.snappy, value: store.stocks.count)
-                if let averageMove {
-                    HStack(spacing: 8) {
-                        PriceChangePill(percent: averageMove)
-                        Text("average move today")
-                            .font(Theme.caption)
+
+                allocation
+
+                if otherCurrencies > 0 {
+                    Text("Plus holdings in \(otherCurrencies) other \(otherCurrencies == 1 ? "currency" : "currencies"), not included.")
+                        .font(Theme.caption)
+                        .foregroundStyle(Theme.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .card()
+            .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+        }
+    }
+
+    private func changeRow(_ label: String, amount: Double, percent: Double, currency: String) -> some View {
+        let color = amount > 0 ? Theme.bullish : amount < 0 ? Theme.bearish : Theme.neutral
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                rowLabel(label)
+                Spacer(minLength: 8)
+                rowValue(amount, percent: percent, currency: currency, color: color)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                rowLabel(label)
+                HStack(spacing: 8) { rowValue(amount, percent: percent, currency: currency, color: color) }
+            }
+            // ViewThatFits centres a narrower child; pin the wrapped layout to the leading edge.
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func rowLabel(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.body)
+            .foregroundStyle(Theme.textSecondary)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func rowValue(_ amount: Double, percent: Double, currency: String, color: Color) -> some View {
+        Text(PriceFormat.signedMoney(amount, currency: currency))
+            .font(Theme.number(.subheadline))
+            .monospacedDigit()
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .contentTransition(.numericText(value: amount))
+            .animation(.snappy, value: amount)
+        PriceChangePill(percent: percent)
+    }
+
+    private var allocation: some View {
+        let slices = slices
+        let total = total
+        return VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { proxy in
+                let gaps = CGFloat(max(slices.count - 1, 0)) * 2
+                HStack(spacing: 2) {
+                    ForEach(slices) { slice in
+                        Rectangle()
+                            .fill(slice.color)
+                            .frame(width: max((proxy.size.width - gaps) * slice.value / total, 2))
+                    }
+                }
+                .clipShape(Capsule())
+            }
+            .frame(height: 8)
+            .animation(.spring(response: 0.6, dampingFraction: 0.85), value: slices.map(\.value))
+
+            // Legend: biggest holdings first, wrapping to more lines when needed.
+            LegendFlow(spacing: 12, lineSpacing: 6) {
+                ForEach(slices.prefix(6)) { slice in
+                    HStack(spacing: 5) {
+                        Circle().fill(slice.color).frame(width: 7, height: 7)
+                        Text(slice.stock.ticker)
+                            .foregroundStyle(Theme.textSecondary)
+                        Text((slice.value / total).formatted(.percent.precision(.fractionLength(0))))
+                            .monospacedDigit()
                             .foregroundStyle(Theme.textTertiary)
                     }
+                    .font(Theme.caption)
+                    .fixedSize()
+                }
+                if slices.count > 6 {
+                    Text("+\(slices.count - 6) more")
+                        .font(Theme.caption)
+                        .foregroundStyle(Theme.textTertiary)
+                        .fixedSize()
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
-        .background(alignment: .topLeading) {
-            GoldGlow(width: 260, height: 120, intensity: 0.7)
-                .offset(x: -50, y: -20)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Allocation: " + slices.map {
+            "\($0.stock.ticker) \(($0.value / total).formatted(.percent.precision(.fractionLength(0))))"
+        }.joined(separator: ", "))
+    }
+}
+
+/// Lays children out left to right and wraps to a new line when the row is full.
+private struct LegendFlow: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0, widest: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                y += line + lineSpacing
+                x = 0
+                line = 0
+            }
+            x += size.width + spacing
+            line = max(line, size.height)
+            widest = max(widest, x - spacing)
         }
-        .accessibilityElement(children: .combine)
+        return CGSize(width: min(widest, width), height: y + line)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, line: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                y += line + lineSpacing
+                x = bounds.minX
+                line = 0
+            }
+            view.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            line = max(line, size.height)
+        }
     }
 }
 
@@ -240,6 +380,8 @@ struct StockCard: View {
     var sentiment: StockSentiment? = nil
     /// Set briefly when a live update moves the price.
     var flash: Direction? = nil
+    /// The user's position; shows "10 shares · $1,234" under the name when they own some.
+    var holding: Holding = Holding()
     let isFresh: Bool
     let now: Date
 
@@ -262,6 +404,25 @@ struct StockCard: View {
         if stock.priceChangePct != nil || stock.priceChange != nil {
             PriceChangePill(percent: stock.priceChangePct, change: stock.priceChange, currency: stock.currencyCode)
         }
+    }
+
+    private func positionLine(_ shares: Double) -> some View {
+        let value = holding.marketValue(at: stock.price)
+        let text = value.map { "\(PriceFormat.shareCount(shares)) · \(PriceFormat.money($0, currency: stock.currencyCode))" }
+            ?? PriceFormat.shareCount(shares)
+        return HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: "briefcase.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text(text)
+                .monospacedDigit()
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.numericText(value: value ?? 0))
+                .animation(.snappy, value: value)
+        }
+        .font(Theme.caption.weight(.semibold))
+        .foregroundStyle(Theme.gold)
+        .accessibilityLabel("You own \(text)")
     }
 
     private var priceText: some View {
@@ -294,6 +455,10 @@ struct StockCard: View {
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let shares = holding.shares, shares > 0 {
+                        positionLine(shares)
+                            .padding(.top, 2)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -322,21 +487,17 @@ struct StockCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            if let sentiment {
+                SentimentMiniBar(sentiment: sentiment)
+            }
+
             HStack(spacing: 8) {
                 if let sentiment {
-                    HStack(spacing: 4) {
-                        Image(systemName: "gauge.with.dots.needle.50percent")
-                        Text("\(sentiment.score)")
-                            .monospacedDigit()
-                            .contentTransition(.numericText(value: Double(sentiment.score)))
-                        Text(sentiment.label)
-                            .lineLimit(1)
-                    }
-                    .font(Theme.caption.weight(.medium))
-                    .foregroundStyle(Theme.color(for: sentiment.direction))
-                    .animation(.snappy, value: sentiment.score)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Sentiment \(sentiment.score), \(sentiment.label)")
+                    Text("Web: \(sentiment.label)")
+                        .font(Theme.caption.weight(.medium))
+                        .foregroundStyle(SentimentScale.color(for: sentiment))
+                        .lineLimit(1)
+                        .accessibilityHidden(true)
                 }
                 Spacer(minLength: 4)
                 if let latest {
@@ -347,6 +508,7 @@ struct StockCard: View {
                         .foregroundStyle(isFresh ? Theme.gold : Theme.textTertiary)
                 }
             }
+            .padding(.top, -4)
         }
         .padding(.leading, 6)
         .card(highlighted: isFresh)

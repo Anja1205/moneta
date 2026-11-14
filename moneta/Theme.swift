@@ -451,6 +451,19 @@ enum PriceFormat {
             : value.formatted(.number.precision(.fractionLength(value.magnitude < 10 ? 2...2 : 0...1)))
     }
 
+    /// "$", "€", "US$"… for a currency code, in the user's locale.
+    static func symbol(for currency: String) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = currency
+        return formatter.currencySymbol ?? currency
+    }
+
+    /// "10 shares", "1 share", "2.5 shares".
+    static func shareCount(_ value: Double) -> String {
+        "\(shares(value)) \(value == 1 ? "share" : "shares")"
+    }
+
     static func shares(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(0...4)))
     }
@@ -520,32 +533,6 @@ struct DemoTag: View {
             .padding(.vertical, 2)
             .overlay(Capsule().strokeBorder(Theme.gold.opacity(0.5), lineWidth: 1))
             .accessibilityLabel("Demo stock")
-    }
-}
-
-/// 0–100 sentiment bar, bearish red on the left to bullish green on the right.
-struct SentimentBar: View {
-    let score: Int
-    var height: CGFloat = 6
-
-    var body: some View {
-        GeometryReader { proxy in
-            let x = proxy.size.width * CGFloat(min(max(score, 0), 100)) / 100
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(LinearGradient(colors: [Theme.bearish, Theme.neutral, Theme.bullish], startPoint: .leading, endPoint: .trailing))
-                    .opacity(0.35)
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: height + 6, height: height + 6)
-                    .shadow(color: .black.opacity(0.4), radius: 2)
-                    .offset(x: min(max(x - (height + 6) / 2, 0), proxy.size.width - height - 6))
-            }
-            .frame(height: height + 6)
-        }
-        .frame(height: height + 6)
-        .accessibilityElement()
-        .accessibilityLabel("Sentiment \(score) out of 100")
     }
 }
 

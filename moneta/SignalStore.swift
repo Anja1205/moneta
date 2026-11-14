@@ -40,6 +40,7 @@ final class SignalStore {
 
     private var channel: RealtimeChannelV2?
     private var listeners: [Task<Void, Never>] = []
+    private var sentimentReload: Task<Void, Never>?
     /// Bumped by reset() so a load that finishes after sign-out is discarded.
     private var generation = 0
 
@@ -165,7 +166,20 @@ final class SignalStore {
         }
     }
 
+    /// Coalesces bursts of new signals into one `stock_sentiment` read.
+    private func scheduleSentimentReload() {
+        sentimentReload?.cancel()
+        sentimentReload = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            await self?.reloadSentiment()
+        }
+    }
+
     private func reloadSentiment() async {
+        #if DEBUG
+        if DemoMode.isMain { return }
+        #endif
         let started = generation
         guard let loaded = await fetchSentiment(for: stocks.map(\.id)), started == generation else { return }
         sentiment = loaded
@@ -203,6 +217,12 @@ final class SignalStore {
     /// Saves shares / average cost on the user's watchlist row. Pass `nil` to clear a field.
     /// Returns `nil` on success, otherwise a message to show.
     func updateHolding(for stock: Stock, shares: Double?, avgCost: Double?) async -> String? {
+        #if DEBUG
+        if DemoMode.isMain {
+            holdings[stock.id] = Holding(shares: shares, avgCost: avgCost)
+            return nil
+        }
+        #endif
         guard let userID = supabase.auth.currentUser?.id else {
             return "You’re signed out. Sign in to save your position."
         }
@@ -344,6 +364,7 @@ final class SignalStore {
     /// Clears everything and stops Realtime. Call on sign-out.
     func reset() async {
         generation += 1
+        sentimentReload?.cancel()
         await stopRealtime()
         stocks = []
         signals = []
@@ -440,7 +461,7 @@ final class SignalStore {
         if signal.isNew {
             onNewSignal?(signal)
         }
-        Task { [weak self] in await self?.reloadSentiment() }
+        scheduleSentimentReload()
     }
 
     /// Appends a Realtime price to a history that's already loaded.

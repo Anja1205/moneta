@@ -41,7 +41,8 @@ struct StockDetailView: View {
             #endif
         }
         .sheet(isPresented: $editingPosition) {
-            PositionEditor(stock: current, holding: store.holding(for: current))
+            EditPositionSheet(stock: current, holding: store.holding(for: current))
+                // Medium by default; large stays available so the keyboard never covers Save on an SE.
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Theme.background)
@@ -90,6 +91,7 @@ struct StockDetailView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 8) { changeRow }
                         VStack(alignment: .leading, spacing: 6) { changeRow }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if let updated = current.priceUpdatedDate {
                         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -567,246 +569,11 @@ private struct SentimentCard: View {
     let sentiment: StockSentiment
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                SectionLabel("Sentiment")
-                Spacer(minLength: 8)
-                Text(sentiment.label)
-                    .font(Theme.bodyEmphasis)
-                    .foregroundStyle(Theme.color(for: sentiment.direction))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text("\(sentiment.score)")
-                    .font(Theme.number(.title2, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.textPrimary)
-                    .contentTransition(.numericText(value: Double(sentiment.score)))
-                    .animation(.snappy, value: sentiment.score)
-            }
-
-            SentimentBar(score: sentiment.score)
-
-            HStack(spacing: 0) {
-                stat("\(sentiment.signals24h)", "Signals 24h", Theme.textPrimary)
-                stat("\(sentiment.bullish7d)", "Bullish 7d", Theme.bullish)
-                stat("\(sentiment.bearish7d)", "Bearish 7d", Theme.bearish)
-            }
-        }
-        .card()
-    }
-
-    private func stat(_ value: String, _ label: String, _ color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(Theme.number(.headline))
-                .monospacedDigit()
-                .foregroundStyle(color)
-                .contentTransition(.numericText())
-            Text(label)
-                .font(Theme.caption)
-                .foregroundStyle(Theme.textTertiary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - Position
-
-private struct PositionCard: View {
-    let stock: Stock
-    let holding: Holding
-    let edit: () -> Void
-
-    var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                SectionLabel("Your position")
-                Spacer()
-                Button(action: edit) {
-                    Text(holding.isEmpty ? "Add" : "Edit")
-                        .font(Theme.bodyEmphasis)
-                        .foregroundStyle(Theme.gold)
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 32)
-                        .background(Theme.gold.opacity(0.12), in: Capsule())
-                }
-                .buttonStyle(PressableButtonStyle())
-            }
-
-            if holding.isEmpty {
-                Text("Add your shares and average cost to track value and gain.")
-                    .font(Theme.body)
-                    .foregroundStyle(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                let code = stock.currencyCode
-                let gain = holding.gain(at: stock.price)
-                // Three columns when they fit; stacked rows at large text sizes.
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) {
-                        cell(PriceFormat.shares(holding.shares ?? 0), "Shares")
-                        Spacer(minLength: 0)
-                        cell(PriceFormat.money(holding.avgCost, currency: code), "Avg cost")
-                        Spacer(minLength: 0)
-                        cell(PriceFormat.money(holding.marketValue(at: stock.price), currency: code), "Value")
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        row("Shares", PriceFormat.shares(holding.shares ?? 0))
-                        row("Avg cost", PriceFormat.money(holding.avgCost, currency: code))
-                        row("Value", PriceFormat.money(holding.marketValue(at: stock.price), currency: code))
-                    }
-                }
-                if let gain {
-                    Divider().overlay(Theme.stroke)
-                    HStack(spacing: 8) {
-                        Text("Gain")
-                            .font(Theme.body)
-                            .foregroundStyle(Theme.textSecondary)
-                        Spacer(minLength: 8)
-                        Text(PriceFormat.signedMoney(gain, currency: code))
-                            .font(Theme.number(.subheadline))
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                            .foregroundStyle(gain > 0 ? Theme.bullish : gain < 0 ? Theme.bearish : Theme.neutral)
-                            .contentTransition(.numericText(value: gain))
-                        PriceChangePill(percent: holding.gainPct(at: stock.price))
-                    }
-                }
-            }
+            SectionLabel("What the web is saying")
+            SentimentGauge(sentiment: sentiment)
         }
         .card()
-    }
-
-    private func cell(_ value: String, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(Theme.number(.subheadline))
-                .monospacedDigit()
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(1)
-                .fixedSize()
-            Text(label)
-                .font(Theme.caption)
-                .foregroundStyle(Theme.textTertiary)
-                .lineLimit(1)
-                .fixedSize()
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private func row(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(Theme.body)
-                .foregroundStyle(Theme.textSecondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(Theme.number(.subheadline))
-                .monospacedDigit()
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct PositionEditor: View {
-    let stock: Stock
-    @Environment(SignalStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    @State private var shares: String
-    @State private var avgCost: String
-    @State private var isSaving = false
-    @State private var error: String?
-
-    init(stock: Stock, holding: Holding) {
-        self.stock = stock
-        _shares = State(initialValue: holding.shares.map { $0.formatted(.number.precision(.fractionLength(0...4)).grouping(.never)) } ?? "")
-        _avgCost = State(initialValue: holding.avgCost.map { $0.formatted(.number.precision(.fractionLength(0...4)).grouping(.never)) } ?? "")
-    }
-
-    /// Accepts "1,5" or "1.5"; empty means clear the field.
-    private static func parse(_ text: String) -> Double?? {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty { return .some(nil) }
-        // Drop grouping spaces of any kind (locales use no-break spaces), accept "," or "." as decimal.
-        let normalized = String(trimmed.unicodeScalars.filter { !CharacterSet.whitespaces.contains($0) })
-            .replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(normalized), value.isFinite, value >= 0 else { return nil }
-        return .some(value)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-            VStack(spacing: 14) {
-                field("Shares", text: $shares, prompt: "0")
-                field("Average cost (\(stock.currencyCode))", text: $avgCost, prompt: "0.00")
-                if let error {
-                    Text(error)
-                        .font(Theme.caption)
-                        .foregroundStyle(Theme.bearish)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(Theme.margin)
-            }
-            .scrollBounceBehavior(.basedOnSize)
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("\(stock.ticker) position")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundStyle(Theme.textSecondary)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if isSaving {
-                        ProgressView().tint(Theme.gold)
-                    } else {
-                        Button("Save", action: save)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(Theme.gold)
-                    }
-                }
-            }
-        }
-    }
-
-    private func field(_ label: String, text: Binding<String>, prompt: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textTertiary)
-            TextField(label, text: text, prompt: Text(prompt).foregroundStyle(Theme.textTertiary))
-                .keyboardType(.decimalPad)
-                .font(.title3.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(Theme.textPrimary)
-                .padding(14)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.smallRadius, style: .continuous))
-        }
-    }
-
-    private func save() {
-        guard let sharesValue = Self.parse(shares), let costValue = Self.parse(avgCost) else {
-            error = "Enter numbers zero or above, or leave a field empty."
-            return
-        }
-        isSaving = true
-        error = nil
-        Task {
-            let message = await store.updateHolding(for: stock, shares: sharesValue, avgCost: costValue)
-            isSaving = false
-            if let message { error = message } else { dismiss() }
-        }
     }
 }
 

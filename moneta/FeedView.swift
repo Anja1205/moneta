@@ -74,22 +74,19 @@ struct SignalRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                if let stock {
-                    CompanyLogo(stock: stock, size: .row)
+            if signal.sourceKind.isPageChange {
+                // Caption beside the time when it fits, under it when it doesn't, and on its own
+                // line at the largest text sizes so the row never runs wider than the screen.
+                ViewThatFits(in: .horizontal) {
+                    headerRow { HStack(spacing: 6) { pageChangeCaption; timeText } }
+                    headerRow { VStack(alignment: .trailing, spacing: 2) { timeText; pageChangeCaption } }
+                    VStack(alignment: .trailing, spacing: 4) {
+                        headerRow { timeText }
+                        pageChangeCaption
+                    }
                 }
-                Text(signal.ticker)
-                    .font(Theme.headline)
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-                DirectionBadge(direction: signal.direction)
-                Spacer(minLength: 4)
-                Text(RelativeTime.string(for: signal.detectedDate, now: now))
-                    .font(Theme.caption)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .fixedSize()
-                    .foregroundStyle(isFresh ? Theme.gold : Theme.textTertiary)
+            } else {
+                headerRow { timeText }
             }
 
             Text(signal.why)
@@ -108,6 +105,43 @@ struct SignalRow: View {
         .card(highlighted: isFresh)
         .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+}
+
+extension SignalRow {
+    /// Logo, ticker and direction on the left; `trailing` on the right.
+    private func headerRow<Trailing: View>(@ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(spacing: 8) {
+            if let stock {
+                CompanyLogo(stock: stock, size: .row)
+            }
+            Text(signal.ticker)
+                .font(Theme.headline)
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+            DirectionBadge(direction: signal.direction)
+            Spacer(minLength: 4)
+            trailing()
+        }
+    }
+
+    private var timeText: some View {
+        Text(RelativeTime.string(for: signal.detectedDate, now: now))
+            .font(Theme.caption)
+            .monospacedDigit()
+            .lineLimit(1)
+            .fixedSize()
+            .foregroundStyle(isFresh ? Theme.gold : Theme.textTertiary)
+    }
+
+    /// Marks web page changes so they stand out from news.
+    private var pageChangeCaption: some View {
+        Label("Page change", systemImage: "doc.text.magnifyingglass")
+            .labelStyle(.titleAndIcon)
+            .font(Theme.caption.weight(.semibold))
+            .foregroundStyle(Theme.gold)
+            .lineLimit(1)
+            .fixedSize()
     }
 }
 
