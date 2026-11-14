@@ -16,18 +16,20 @@ struct SignalDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: Theme.cardSpacing) {
                 header
                 impactSection
                 whyCard
                 details
+                    .padding(.top, 8)
                 actions
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, Theme.margin)
             .padding(.top, 12)
-            .padding(.bottom, 32)
+            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
+        .demoScrollAnchor()
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle(signal.ticker)
         .navigationBarTitleDisplayMode(.inline)
@@ -35,6 +37,7 @@ struct SignalDetailView: View {
             if let sourceURL {
                 SafariView(url: sourceURL)
                     .ignoresSafeArea()
+                    .presentationDetents([.large])
             }
         }
     }
@@ -42,19 +45,24 @@ struct SignalDetailView: View {
     // MARK: Sections
 
     private var header: some View {
-        HStack(spacing: 12) {
-            StockLogo(ticker: signal.ticker, logoURL: stock?.logoURL, brandColor: stock?.brandColor, size: 48)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top, spacing: 14) {
+            CompanyLogo(ticker: signal.ticker, logoURL: stock?.logoURL, brandColor: stock?.brandColor, size: .header)
+            VStack(alignment: .leading, spacing: 4) {
                 Text(signal.ticker)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(Theme.title)
                     .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 Text(signal.stockName)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textTertiary)
+                    .font(Theme.body)
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                DirectionBadge(direction: signal.direction, size: .large)
+                    .padding(.top, 4)
             }
-            Spacer(minLength: 8)
-            DirectionBadge(direction: signal.direction, size: .large)
+            Spacer(minLength: 0)
         }
+        .padding(.bottom, 4)
     }
 
     private var impactSection: some View {
@@ -65,16 +73,15 @@ struct SignalDetailView: View {
                 Spacer()
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
                     Text("\(signal.clampedImpact)")
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
+                        .font(Theme.number(.largeTitle, weight: .bold))
                         .foregroundStyle(Theme.color(for: signal.direction))
                     Text("/5")
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .font(Theme.number(.title3))
                         .foregroundStyle(Theme.textTertiary)
                 }
                 .monospacedDigit()
             }
         }
-        .padding(16)
         .card()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Impact \(signal.clampedImpact) of 5")
@@ -88,13 +95,8 @@ struct SignalDetailView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
-                .strokeBorder(Theme.gold.opacity(0.35), lineWidth: 1)
-        )
+        .card(border: Theme.gold.opacity(0.35))
     }
 
     private var details: some View {
@@ -102,35 +104,28 @@ struct SignalDetailView: View {
             SourceChip(kind: signal.sourceKind, sourceName: signal.sourceName)
 
             Text(signal.title)
-                .font(.title3.weight(.bold))
+                .font(Theme.sectionTitle)
                 .foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let description = signal.description, !description.isEmpty {
                 Text(description)
-                    .font(.callout)
+                    .font(Theme.body)
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Label(publishedText, systemImage: "clock")
-                .font(.footnote)
+                .font(Theme.caption)
                 .foregroundStyle(Theme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var actions: some View {
         HStack(spacing: 10) {
             if sourceURL != nil {
-                Button {
-                    showingSource = true
-                } label: {
-                    Label("Open source", systemImage: "safari")
-                        .font(.body.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .foregroundStyle(Theme.background)
-                        .background(Theme.gold, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
+                PrimaryButton(title: "Open source", systemImage: "safari") { showingSource = true }
             }
 
             Group {
@@ -142,6 +137,7 @@ struct SignalDetailView: View {
                     ShareLink(item: shareText) { shareLabel }
                 }
             }
+            .buttonStyle(PressableButtonStyle())
             .accessibilityLabel("Share")
         }
         .padding(.top, 4)
@@ -152,9 +148,9 @@ struct SignalDetailView: View {
             .font(.body.weight(.semibold))
             .foregroundStyle(Theme.gold)
             .frame(width: 52, height: 52)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.buttonRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.buttonRadius, style: .continuous)
                     .strokeBorder(Theme.gold.opacity(0.4))
             )
     }
@@ -167,23 +163,6 @@ struct SignalDetailView: View {
             return "Detected \(date.formatted(date: .abbreviated, time: .shortened)) · \(RelativeTime.string(for: date))"
         }
         return "Publish time unknown"
-    }
-}
-
-private struct SectionLabel: View {
-    let text: String
-    var color: Color = Theme.textTertiary
-
-    init(_ text: String, color: Color = Theme.textTertiary) {
-        self.text = text
-        self.color = color
-    }
-
-    var body: some View {
-        Text(text.uppercased())
-            .font(.caption.weight(.bold))
-            .tracking(1.2)
-            .foregroundStyle(color)
     }
 }
 

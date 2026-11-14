@@ -21,30 +21,29 @@ struct FeedView: View {
                                     NavigationLink(value: signal) {
                                         SignalRow(
                                             signal: signal,
+                                            stock: store.stock(for: signal),
                                             isFresh: store.freshIds.contains(signal.id),
                                             now: context.date
                                         )
                                     }
                                     .buttonStyle(PressableCardStyle())
-                                    .transition(.asymmetric(
-                                        insertion: .move(edge: .top).combined(with: .opacity),
-                                        removal: .opacity
-                                    ))
+                                    .transition(.signalInsert)
                                 }
                             }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, Theme.margin)
                 .padding(.top, 8)
-                .padding(.bottom, 32)
-                .animation(.spring(response: 0.5, dampingFraction: 0.78), value: store.signals.map(\.id))
+                .padding(.bottom, 24)
+                .animation(.signalSpring, value: store.signals.map(\.id))
                 .animation(.easeOut(duration: 0.3), value: store.freshIds)
             }
             .scrollIndicators(.hidden)
+            .demoScrollAnchor()
             .background(Theme.background.ignoresSafeArea())
             .refreshable {
-                await store.pollNow()
+                await store.refreshAll()
                 await store.load()
             }
             .navigationTitle("Live Feed")
@@ -68,25 +67,33 @@ struct FeedView: View {
 
 struct SignalRow: View {
     let signal: Signal
+    /// Shows the company logo when set. Leave nil where the stock is already obvious (its detail screen).
+    var stock: Stock? = nil
     let isFresh: Bool
     let now: Date
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
+                if let stock {
+                    CompanyLogo(stock: stock, size: .row)
+                }
                 Text(signal.ticker)
-                    .font(.headline)
+                    .font(Theme.headline)
                     .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
                 DirectionBadge(direction: signal.direction)
                 Spacer(minLength: 4)
                 Text(RelativeTime.string(for: signal.detectedDate, now: now))
-                    .font(.caption)
+                    .font(Theme.caption)
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
                     .foregroundStyle(isFresh ? Theme.gold : Theme.textTertiary)
             }
 
             Text(signal.why)
-                .font(.subheadline)
+                .font(Theme.body)
                 .foregroundStyle(Theme.textSecondary)
                 .multilineTextAlignment(.leading)
                 .lineLimit(4)
@@ -98,13 +105,7 @@ struct SignalRow: View {
                 ImpactMeter(impact: signal.clampedImpact, direction: signal.direction)
             }
         }
-        .padding(16)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
-                .strokeBorder(isFresh ? Theme.gold : Theme.stroke, lineWidth: isFresh ? 1.5 : 1)
-        )
-        .shadow(color: isFresh ? Theme.gold.opacity(0.25) : .clear, radius: 12)
+        .card(highlighted: isFresh)
         .contentShape(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
         .accessibilityElement(children: .combine)
     }
@@ -122,18 +123,33 @@ private struct WatchingEmptyState: View {
                 .foregroundStyle(Theme.gold)
                 .symbolEffect(.variableColor.iterative, options: .repeating, isActive: true)
             Text("Watching the web…")
-                .font(.headline)
+                .font(Theme.headline)
                 .foregroundStyle(Theme.textPrimary)
             Text(isLoading
                  ? "Loading signals."
                  : "New signals land here the moment Moneta spots them. Pull down to check now.")
-                .font(.subheadline)
+                .font(Theme.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
-        .padding(.horizontal, 24)
+        .padding(.vertical, 32)
         .card()
     }
+}
+
+// MARK: - Motion
+
+extension Animation {
+    /// New signals spring into lists.
+    static let signalSpring = Animation.spring(response: 0.5, dampingFraction: 0.75)
+}
+
+extension AnyTransition {
+    /// A new signal drops in from the top with a slight scale; removals fade.
+    static let signalInsert = AnyTransition.asymmetric(
+        insertion: .move(edge: .top).combined(with: .scale(scale: 0.96, anchor: .top)).combined(with: .opacity),
+        removal: .opacity
+    )
 }

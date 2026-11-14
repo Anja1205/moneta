@@ -1,18 +1,37 @@
+ import ActivityKit
+import Observation
 import UIKit
 import UserNotifications
 
-/// Haptics and local notifications for signals arriving over Realtime.
+/// Haptics, local notifications and the Moneta Live Activity for signals arriving over Realtime.
+@Observable
 @MainActor
 final class AlertService: NSObject, UNUserNotificationCenterDelegate {
     static let shared = AlertService()
 
-    private let center = UNUserNotificationCenter.current()
-    private let impact = UIImpactFeedbackGenerator(style: .light)
-    private let notify = UINotificationFeedbackGenerator()
+    /// Signals at or above this impact update the Live Activity.
+    static let liveActivityImpact = 3
+
+    private(set) var isLiveActivityRunning = false
+    private(set) var liveActivityError: String?
+
+    @ObservationIgnored private let center = UNUserNotificationCenter.current()
+    @ObservationIgnored private let impact = UIImpactFeedbackGenerator(style: .light)
+    @ObservationIgnored private let notify = UINotificationFeedbackGenerator()
+    @ObservationIgnored private var activity: Activity<MonetaAttributes>?
 
     private override init() {
         super.init()
+        // Pick up an activity that survived an app relaunch.
+        activity = Activity<MonetaAttributes>.activities.first { $0.activityState == .active }
+        isLiveActivityRunning = activity != nil
     }
+
+    var liveActivitiesAllowed: Bool {
+        ActivityAuthorizationInfo().areActivitiesEnabled
+    }
+
+    // MARK: Notifications
 
     /// Becomes the notification delegate and asks for permission. Returns whether alerts are allowed.
     @discardableResult
@@ -33,6 +52,10 @@ final class AlertService: NSObject, UNUserNotificationCenterDelegate {
             impact.impactOccurred()
         }
 
+        if signal.clampedImpact >= Self.liveActivityImpact {
+            updateLiveActivity(with: signal)
+        }
+
         guard isAlert else { return }
 
         let content = UNMutableNotificationContent()
@@ -45,6 +68,64 @@ final class AlertService: NSObject, UNUserNotificationCenterDelegate {
 
         let request = UNNotificationRequest(identifier: signal.id.uuidString, content: content, trigger: nil)
         center.add(request) { _ in }
+    }
+
+    // MARK: Live Activity
+
+    /// Starts the Live Activity, showing `signal` if given, otherwise a "watching" state.
+    func startLiveActivity(with signal: Signal? = nil) {
+        liveActivityError = nil
+        guard liveActivitiesAllowed else {
+            liveActivityError = "Live Activities are turned off for Moneta in Settings."
+            return
+        }
+        if activity != nil {
+            if let signal { updateLiveActivity(with: signal) }
+            return
+        }
+        let state = signal.map(Self.state(for:)) ?? .watching
+        do {
+            activity = try Activity.request(
+                attributes: MonetaAttributes(),
+                content: ActivityContent(state: state, staleDate: nil),
+                pushType: nil
+            )
+            isLiveActivityRunning = true
+        } catch {
+            liveActivityError = "Couldn’t start the Live Activity. \(error.localizedDescription)"
+            isLiveActivityRunning = false
+        }
+    }
+
+    func stopLiveActivity() async {
+        for running in Activity<MonetaAttributes>.activities {
+            await running.end(nil, dismissalPolicy: .immediate)
+        }
+        activity = nil
+        isLiveActivityRunning = false
+    }
+
+    private func updateLiveActivity(with signal: Signal) {
+        guard let activity else { return }
+        let content = ActivityContent(state: Self.state(for: signal), staleDate: nil)
+        Task {
+            if activity.activityState == .active {
+                await activity.update(content)
+            } else {
+                self.activity = nil
+                self.isLiveActivityRunning = false
+            }
+        }
+    }
+
+    private static func state(for signal: Signal) -> MonetaAttributes.ContentState {
+        MonetaAttributes.ContentState(
+            ticker: signal.ticker,
+            direction: signal.direction.rawValue,
+            why: signal.why,
+            impact: signal.clampedImpact,
+            updatedAt: signal.detectedDate ?? .now
+        )
     }
 
     // MARK: UNUserNotificationCenterDelegate
