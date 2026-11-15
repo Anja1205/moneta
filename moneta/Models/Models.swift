@@ -1,0 +1,245 @@
+import Foundation
+
+/// A listed company Moneta can watch.
+nonisolated struct Company: Identifiable, Hashable, Codable, Sendable {
+    let ticker: String
+    let name: String
+    /// Empty when the data source doesn't say.
+    var exchange: String = ""
+    var sector: String = ""
+    /// Brand colour for logos and accents.
+    var brandHex: UInt32 = 0xFFB547
+    /// SF Symbol for the company mark when there's no logo (mock data).
+    var symbol: String? = nil
+    var logoURL: URL? = nil
+    var domain: String? = nil
+    /// Where a search hit came from: "catalog" or "context.dev" (live web).
+    var source: String? = nil
+    /// Position in the Top 20 / Top 30.
+    var rank: Int? = nil
+    /// `stocks.id` once the backend tracks it (watchlist, sentiment, price history).
+    var stockID: UUID? = nil
+    /// Price from the `companies` list (onboarding, search, Markets), when known.
+    var listPrice: Double? = nil
+    /// `price_change_pct` in percent (0.39 = +0.39%).
+    var listChangePct: Double? = nil
+    var listCurrency: String? = nil
+
+    var id: String { ticker }
+
+    /// Found live on the web by Context.dev rather than in Moneta's catalog.
+    var isLiveWeb: Bool { source == "context.dev" }
+
+    /// "NVDA · NASDAQ" (or just the ticker).
+    var tickerLine: String {
+        [ticker, exchange].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// "NVDA · NASDAQ · Semiconductors", skipping what's unknown.
+    var detailLine: String {
+        [ticker, exchange, sector].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
+/// Where on the web a change was seen.
+nonisolated enum SignalSource: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case news, x, careers, pricing, investor, changelog
+
+    var id: String { rawValue }
+
+    /// Tile title in "What Moneta watches".
+    var watchTitle: String {
+        switch self {
+        case .news: "News & press"
+        case .x: "Posts on X"
+        case .careers: "Careers page"
+        case .pricing: "Pricing pages"
+        case .investor: "Investor pages"
+        case .changelog: "Product changes"
+        }
+    }
+
+    /// Short label on signal cards.
+    var label: String {
+        switch self {
+        case .news: "News"
+        case .x: "CEO on X"
+        case .careers: "Careers page"
+        case .pricing: "Pricing page"
+        case .investor: "Investor page"
+        case .changelog: "Changelog"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .news: "newspaper"
+        case .x: "bubble.left.and.text.bubble.right"
+        case .careers: "person.2.badge.plus"
+        case .pricing: "tag"
+        case .investor: "building.columns"
+        case .changelog: "shippingbox"
+        }
+    }
+}
+
+/// The backend's 1–5 score: 1 noise, 2 minor, 3 worth knowing, 4 important, 5 likely to move
+/// the stock today.
+nonisolated enum Impact: Int, CaseIterable, Comparable, Hashable, Sendable {
+    case low = 1, minor = 2, medium = 3, high = 4, major = 5
+
+    static func < (lhs: Impact, rhs: Impact) -> Bool { lhs.rawValue < rhs.rawValue }
+
+    /// Any score, clamped to 1–5.
+    init(score: Int) {
+        self = Impact(rawValue: min(max(score, 1), 5)) ?? .medium
+    }
+
+    /// The one label every view uses: "Low", "Minor", "Medium", "High", "Major".
+    var label: String {
+        switch self {
+        case .low: "Low"
+        case .minor: "Minor"
+        case .medium: "Medium"
+        case .high: "High"
+        case .major: "Major"
+        }
+    }
+
+    /// "High · 4/5"
+    var scoreLabel: String { "\(label) · \(rawValue)/5" }
+
+    /// Worth knowing or more (3+): what the "Important" filters keep.
+    var isImportant: Bool { self >= .medium }
+}
+
+/// Which way a signal points for the company's share price.
+nonisolated enum Direction: String, CaseIterable, Hashable, Sendable {
+    case bullish, bearish, neutral
+
+    init(_ raw: String?) {
+        self = Direction(rawValue: raw?.lowercased() ?? "") ?? .neutral
+    }
+
+    var label: String { rawValue.capitalized }
+
+    var symbol: String {
+        switch self {
+        case .bullish: "arrow.up.right"
+        case .bearish: "arrow.down.right"
+        case .neutral: "arrow.right"
+        }
+    }
+}
+
+/// Which signals alert the user.
+nonisolated enum AlertLevel: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case highOnly, mediumUp, all
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .highOnly: "High only"
+        case .mediumUp: "Medium+"
+        case .all: "All"
+        }
+    }
+
+    var minimum: Impact {
+        switch self {
+        case .highOnly: .high
+        case .mediumUp: .medium
+        case .all: .low
+        }
+    }
+}
+
+/// One line of a page diff.
+nonisolated struct DiffLine: Identifiable, Hashable, Sendable {
+    enum Kind: Hashable, Sendable { case unchanged, added, removed }
+    let id = UUID()
+    let kind: Kind
+    let text: String
+}
+
+/// A raw change the web monitor found, before the agent judges it.
+nonisolated struct WebChange: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let ticker: String
+    let source: SignalSource
+    let detectedAt: Date
+    let title: String
+    let url: URL?
+    let diff: [DiffLine]
+    /// Context the monitor knows, e.g. "Page unchanged for 41 days".
+    let facts: [String]
+    /// False for rows the backend re-scored rather than newly found; those never alert.
+    var isNew = true
+}
+
+/// A change the agent decided matters, with its one-sentence "why".
+nonisolated struct Signal: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let ticker: String
+    let source: SignalSource
+    let impact: Impact
+    let time: Date
+    let title: String
+    let why: String
+    let url: URL?
+    let facts: [String]
+    let diff: [DiffLine]
+    var direction: Direction = .neutral
+    var isNew = true
+}
+
+/// How the price moved after a signal, measured from the intraday series.
+nonisolated struct MarketReaction: Hashable, Sendable {
+    let signalTime: Date
+    /// Fractional move from the price at the signal (0.028 = +2.8%).
+    let move: Double
+    /// When the price made most of that move; nil when it hasn't moved meaningfully (yet).
+    let at: Date?
+    /// True once an hour of prices has passed without a meaningful move, or the move happened.
+    var settled: Bool = true
+
+    /// Minutes the web was ahead of the market.
+    var leadMinutes: Int? {
+        at.map { max(Int($0.timeIntervalSince(signalTime) / 60), 1) }
+    }
+}
+
+nonisolated struct PricePoint: Identifiable, Hashable, Sendable {
+    let date: Date
+    let price: Double
+    var id: Date { date }
+}
+
+nonisolated struct Quote: Hashable, Sendable {
+    let price: Double
+    let previousClose: Double
+    let updatedAt: Date
+    var currency: String = "USD"
+
+    var change: Double { price - previousClose }
+    var changeFraction: Double { previousClose == 0 ? 0 : change / previousClose }
+}
+
+nonisolated struct PriceTick: Sendable {
+    let ticker: String
+    let point: PricePoint
+}
+
+nonisolated enum ChartRange: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case day = "1D", week = "1W", month = "1M", quarter = "3M", year = "1Y"
+    var id: String { rawValue }
+}
+
+/// Per-stock watch settings.
+nonisolated struct WatchSettings: Hashable, Sendable {
+    var sources: Set<SignalSource>
+    var alertLevel: AlertLevel
+
+    static let standard = WatchSettings(sources: Set(SignalSource.allCases), alertLevel: .mediumUp)
+}
