@@ -15,14 +15,6 @@ struct MonetaApp: App {
         let appearance = UINavigationBar.appearance()
         appearance.largeTitleTextAttributes = [.font: font(34, .largeTitle), .foregroundColor: UIColor(Palette.text)]
         appearance.titleTextAttributes = [.font: font(17, .headline), .foregroundColor: UIColor(Palette.text)]
-
-        // Sign in / Create account picker.
-        let segmented = UISegmentedControl.appearance()
-        segmented.selectedSegmentTintColor = UIColor(Brand.gold)
-        segmented.setTitleTextAttributes([.foregroundColor: UIColor.black,
-                                          .font: UIFont.systemFont(ofSize: 14, weight: .semibold)], for: .selected)
-        segmented.setTitleTextAttributes([.foregroundColor: UIColor.white.withAlphaComponent(0.7),
-                                          .font: UIFont.systemFont(ofSize: 14, weight: .medium)], for: .normal)
     }
 
     var body: some Scene {

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(MonetaStore.self) private var store
+    @Environment(MarketStore.self) private var store
     @Environment(AuthService.self) private var auth
     @AppStorage(DataSource.storageKey) private var source: DataSource = .default
     @State private var confirmSignOut = false
@@ -197,7 +197,7 @@ struct SettingsView: View {
 
 #Preview {
     SettingsView()
-        .environment(MonetaStore.preview())
+        .environment(MarketStore.preview())
         .environment(AuthService())
         .preferredColorScheme(.dark)
 }

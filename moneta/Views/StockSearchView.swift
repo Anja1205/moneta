@@ -6,7 +6,7 @@ struct StockSearchView: View {
         /// "+" toggles the onboarding selection; nothing reaches the backend yet.
         case onboarding(OnboardingSelection)
         /// "+" adds the stock to the watchlist (`add-stock` on the Moneta backend).
-        case watchlist(MonetaStore)
+        case watchlist(MarketStore)
     }
 
     let mode: Mode
@@ -218,6 +218,7 @@ private struct SearchResultRow: View {
                 }
             }
             Spacer(minLength: 8)
+            ListPriceLabel(company: company)
             Button(action: action) {
                 AddToggleIcon(isOn: isOn, isBusy: isBusy)
                     .frame(width: 44, height: 44)

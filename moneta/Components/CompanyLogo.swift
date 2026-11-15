@@ -76,6 +76,29 @@ struct CompanyLogo: View {
     }
 }
 
+/// Price and today's change from the `companies` list, right-aligned. Empty when unknown.
+struct ListPriceLabel: View {
+    let company: Company
+
+    var body: some View {
+        if let price = company.listPrice {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(Fmt.price(price, currency: company.listCurrency ?? "USD"))
+                    .font(.number(14))
+                    .monospacedDigit()
+                    .foregroundStyle(Brand.text)
+                if let pct = company.listChangePct {
+                    Text(Fmt.percent(pct / 100))
+                        .font(.number(12, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(abs(pct) < 0.05 ? Brand.muted : pct > 0 ? Brand.bullish : Brand.bearish)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
 #Preview {
     HStack(spacing: 12) {
         CompanyLogo(ticker: "NVDA", size: 40)

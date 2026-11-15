@@ -48,7 +48,7 @@ enum MockData {
                     (.unchanged, "Lumen Motors — welding cells since 2024"),
                     (.added, "Brenner Automobil — body-shop pilot line, 2026")],
              facts: ["Not in the news yet", "Page unchanged for 41 days"],
-             impact: .high, why: "Not reported yet, and it hints at a much bigger backlog.", move: 0.028, lead: 28),
+             impact: .major, why: "Not reported yet, and it hints at a much bigger backlog.", move: 0.028, lead: 28),
         seed("VNTR", .careers, 13, 5, "34 robotics roles posted in Stuttgart",
              url: "https://example.com/vantor/careers?location=stuttgart",
              diff: [(.unchanged, "Open roles · Stuttgart"),
@@ -60,7 +60,7 @@ enum MockData {
              url: "https://example.com/vantor/ceo-post",
              diff: [(.added, "“New cell line running at full speed in Ohio 🚀”")],
              facts: ["Posted by the CEO", "No figures mentioned"],
-             impact: .low, why: "Mostly promotional, with no new figures.", move: 0, lead: 0),
+             impact: .minor, why: "Mostly promotional, with no new figures.", move: 0, lead: 0),
         seed("HLDN", .investor, 9, 48, "Earnings call moved up by a week",
              url: "https://example.com/halden/investors/events",
              diff: [(.removed, "Q3 results call: 21 November, 16:30"),
@@ -84,7 +84,7 @@ enum MockData {
              url: "https://example.com/news/brightmere-closures",
              diff: [(.added, "Brightmere will close 14 stores in the Midwest by March.")],
              facts: ["Local paper, not national press yet"],
-             impact: .medium, why: "Store closures cut revenue in its weakest region.", move: -0.014, lead: 22),
+             impact: .high, why: "Store closures cut revenue in its weakest region.", move: -0.014, lead: 22),
         seed("ORLA", .changelog, 11, 5, "New ready-meal line on product pages",
              url: "https://example.com/orla/products",
              diff: [(.unchanged, "Products"),
@@ -103,7 +103,7 @@ enum MockData {
                 id: UUID(), ticker: ticker, source: source, detectedAt: at(hour, minute), title: title,
                 url: URL(string: url)!, diff: diff.map { DiffLine(kind: $0.0, text: $0.1) }, facts: facts
             ),
-            assessment: SignalAssessment(impact: impact, why: why),
+            assessment: SignalAssessment(impact: impact, why: why, direction: Direction(move: move)),
             move: move, lead: lead
         )
     }
@@ -177,5 +177,12 @@ extension String {
     /// Stable seed per ticker.
     var stableSeed: UInt64 {
         unicodeScalars.reduce(1469598103934665603) { ($0 ^ UInt64($1.value)) &* 1099511628211 }
+    }
+}
+
+extension Direction {
+    /// Demo data: the direction of the price move that followed.
+    init(move: Double) {
+        self = move > 0.002 ? .bullish : move < -0.002 ? .bearish : .neutral
     }
 }

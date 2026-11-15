@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The Search tab: find a company, open it or add it.
 struct SearchView: View {
-    @Environment(MonetaStore.self) private var store
+    @Environment(MarketStore.self) private var store
     @Environment(AppRouter.self) private var router
     @State private var query = ""
     @State private var results: [Company] = []
@@ -89,7 +89,7 @@ struct SearchView: View {
 
 #Preview {
     SearchView()
-        .environment(MonetaStore.preview())
+        .environment(MarketStore.preview())
         .environment(AppRouter())
         .preferredColorScheme(.dark)
 }

@@ -64,6 +64,10 @@ struct StockTile: View {
     let quote: Quote?
     let points: [PricePoint]
     let newCount: Int
+    /// Newest signal with impact 3+ (or the newest of any impact).
+    var latest: Signal? = nil
+    /// `stock_sentiment` score 0–100, when known.
+    var sentiment: Double? = nil
 
     var body: some View {
         Card(padding: 16) {
@@ -86,8 +90,12 @@ struct StockTile: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                latestLine
                 Sparkline(points: points.sparkValues())
                     .frame(height: 38)
+                if let sentiment {
+                    SentimentBar(score: sentiment)
+                }
                 if let quote {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(Fmt.price(quote.price, currency: quote.currency))
@@ -111,10 +119,26 @@ struct StockTile: View {
         .accessibilityHint("Opens \(company.name)")
     }
 
+    /// Direction-coloured dot and the latest signal's headline, two lines reserved.
+    private var latestLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Circle()
+                .fill(latest.map { Palette.direction($0.direction) } ?? Palette.border)
+                .frame(width: 7, height: 7)
+                .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+            Text(latest?.title ?? "No signals yet")
+                .font(.mFootnote)
+                .foregroundStyle(latest == nil ? Palette.muted : Palette.secondary)
+                .lineLimit(2, reservesSpace: true)
+        }
+        .animation(.easeOut(duration: 0.25), value: latest?.id)
+    }
+
     private var accessibilityText: String {
         var parts = ["\(company.name), \(company.ticker)"]
         if let quote { parts.append("\(Fmt.price(quote.price, currency: quote.currency)), \(Fmt.percent(quote.changeFraction)) today") }
         if newCount > 0 { parts.append("\(newCount) new signals") }
+        if let latest { parts.append("Latest: \(latest.direction.label), \(latest.impact.label). \(latest.title)") }
         return parts.joined(separator: ", ")
     }
 }

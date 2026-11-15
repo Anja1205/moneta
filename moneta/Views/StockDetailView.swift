@@ -3,15 +3,18 @@ import SwiftUI
 
 struct StockDetailView: View {
     let ticker: String
-    @Environment(MonetaStore.self) private var store
+    @Environment(MarketStore.self) private var store
     @State private var range: ChartRange = .day
     @State private var history: [PricePoint] = []
     @State private var confirmingRemove = false
+    @AppStorage("stock.impactFilter") private var timelineFilter: ImpactFilter = .important
+    @State private var editingPosition = false
     @Environment(\.dismiss) private var dismiss
 
     private var company: Company? { store.company(ticker) }
     private var quote: Quote? { store.quotes[ticker] }
     private var signals: [Signal] { store.signals(for: ticker) }
+    private var timeline: [Signal] { signals.filter(timelineFilter.keeps) }
     private var points: [PricePoint] { range == .day ? (store.intraday[ticker] ?? []) : history }
 
     var body: some View {
@@ -38,17 +41,29 @@ struct StockDetailView: View {
 
                 GlassSegmented(options: ChartRange.allCases, selection: $range, title: \.rawValue, accessibilityLabel: "Chart range")
 
+                PositionCard(ticker: ticker, position: store.positions[ticker], quote: quote) {
+                    editingPosition = true
+                }
+
+                if let sentiment = store.sentiment[ticker] {
+                    SentimentCard(sentiment: sentiment)
+                }
+
                 VStack(alignment: .leading, spacing: Metrics.spacing) {
-                    SectionTitle(text: "Signal timeline", trailing: signals.isEmpty ? nil : "\(signals.count) recent")
-                    if signals.isEmpty {
+                    SectionTitle(text: "Signal timeline", trailing: timeline.isEmpty ? nil : "\(timeline.count) recent")
+                    GlassSegmented(options: ImpactFilter.allCases, selection: $timelineFilter, title: \.rawValue,
+                                   accessibilityLabel: "Show")
+                    if timeline.isEmpty {
                         Card {
-                            Text("No signals for \(company?.name ?? ticker) in the last few days. Moneta adds them here as soon as the web changes.")
+                            Text(signals.isEmpty
+                                 ? "No signals for \(company?.name ?? ticker) in the last few days. Moneta adds them here as soon as the web changes."
+                                 : "No important news for \(company?.name ?? ticker) right now — Moneta is watching.")
                                 .font(.mCallout)
                                 .foregroundStyle(Palette.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    ForEach(signals) { signal in
+                    ForEach(timeline) { signal in
                         NavigationLink(value: Route.signal(signal.id)) {
                             SignalTimelineCard(
                                 signal: signal,
@@ -62,11 +77,15 @@ struct StockDetailView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
-                .animation(.spring(response: 0.5, dampingFraction: 0.78), value: signals.map(\.id))
+                .animation(.spring(response: 0.5, dampingFraction: 0.78), value: timeline.map(\.id))
             }
             .padding(.horizontal, Metrics.margin)
             .padding(.top, 8)
             .padding(.bottom, 24)
+        }
+        .refreshable {
+            await store.refresh()
+            if range != .day { history = await store.history(ticker, range: range) }
         }
         .monetaScreen()
         .navigationTitle(company?.name ?? ticker)
@@ -94,6 +113,13 @@ struct StockDetailView: View {
                 }
                 .accessibilityLabel("Alerts for \(ticker)")
             }
+        }
+        .sheet(isPresented: $editingPosition) {
+            PositionEditSheet(ticker: ticker, position: store.positions[ticker],
+                              currency: quote?.currency ?? "USD") { shares, avgCost in
+                await store.updatePosition(ticker, shares: shares, avgCost: avgCost)
+            }
+            .presentationDetents([.medium])
         }
         .confirmationDialog("Stop watching \(ticker)?", isPresented: $confirmingRemove, titleVisibility: .visible) {
             Button("Stop watching", role: .destructive) {
@@ -188,12 +214,13 @@ struct PriceChartView: View {
     }
 
     var body: some View {
-        if points.count < 2 {
+        // A flat line of one repeated price says nothing; show the empty state instead.
+        if Set(points.map(\.price)).count < 2 {
             VStack(spacing: 8) {
                 Image(systemName: "chart.xyaxis.line")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(Palette.muted)
-                Text(points.isEmpty ? "No prices for this range yet." : "The chart fills in as new prices arrive.")
+                Text(points.isEmpty ? "No prices for this range yet." : "Not enough price history yet.")
                     .font(.mFootnote)
                     .foregroundStyle(Palette.muted)
                     .multilineTextAlignment(.center)
@@ -230,9 +257,11 @@ struct PriceChartView: View {
             }
 
             ForEach(visibleSignals) { signal in
-                RuleMark(x: .value("Signal", signal.time), yStart: .value("Low", r.low), yEnd: .value("Top", r.high))
-                    .foregroundStyle(SignalPin.color(for: signal.impact))
-                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                // Bar height is the impact (1–5 of the chart's height), colour the direction.
+                let top = r.low + (r.high - r.low) * Double(signal.impact.rawValue) / 5
+                RuleMark(x: .value("Signal", signal.time), yStart: .value("Low", r.low), yEnd: .value("Top", top))
+                    .foregroundStyle(Palette.direction(signal.direction).opacity(0.85))
+                    .lineStyle(StrokeStyle(lineWidth: compact ? 2 : 3, lineCap: .round))
                     // Pin centred on the rule, with the lead time beside it in the band's direction.
                     .annotation(position: .top, alignment: .leading, spacing: 2) {
                         let size: CGFloat = compact ? 18 : 22
@@ -308,7 +337,7 @@ struct PriceChartView: View {
     NavigationStack {
         StockDetailView(ticker: "VNTR")
     }
-    .environment(MonetaStore.preview())
+    .environment(MarketStore.preview())
     .environment(AppRouter())
     .preferredColorScheme(.dark)
 }

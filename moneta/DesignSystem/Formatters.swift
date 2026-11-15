@@ -6,6 +6,11 @@ enum Fmt {
         value.formatted(.currency(code: currency).precision(.fractionLength(2)))
     }
 
+    /// Share counts: "10", "2.5", "0.125".
+    static func number(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...4)))
+    }
+
     /// "+$3.42" / "−$1.10"
     static func signedPrice(_ value: Double, currency: String = "USD") -> String {
         let body = price(abs(value), currency: currency)

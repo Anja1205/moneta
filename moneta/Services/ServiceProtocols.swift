@@ -38,6 +38,12 @@ protocol WebMonitorService: AnyObject {
     func recentChanges(for tickers: [String]) async throws -> [WebChange]
     /// New changes for every watched company, as they're found.
     func changes() -> AsyncStream<WebChange>
+    /// Changes the service already sent that were re-scored since (same id, new verdict).
+    func updates() -> AsyncStream<WebChange>
+}
+
+extension WebMonitorService {
+    func updates() -> AsyncStream<WebChange> { AsyncStream { $0.finish() } }
 }
 
 /// The agent's judgement on one change.
@@ -45,6 +51,7 @@ nonisolated struct SignalAssessment: Hashable, Sendable {
     let impact: Impact
     /// One sentence on why it matters.
     let why: String
+    var direction: Direction = .neutral
 }
 
 /// Decides whether a change matters and explains why in one sentence.

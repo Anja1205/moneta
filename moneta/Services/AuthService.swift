@@ -58,8 +58,11 @@ final class AuthService {
 
     private func apply(_ newSession: Session?) async {
         let userChanged = newSession?.user.id != session?.user.id
+        let wasSignedIn = session != nil
         session = newSession
         if newSession == nil {
+            // Signed out (or the session ended): take the Live Activity and alerts down with it.
+            if wasSignedIn { await AlertService.shared.stop() }
             profile = nil
             profileError = nil
         } else if userChanged || profile == nil {

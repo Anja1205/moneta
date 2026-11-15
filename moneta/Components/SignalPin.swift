@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Numbered pin for a signal: high = solid amber, medium = amber tint, low = grey.
+/// Numbered pin for a signal: high and major = solid amber, medium = amber tint, minor and low = grey.
 struct SignalPin: View {
     let number: Int
     let impact: Impact
@@ -14,39 +14,39 @@ struct SignalPin: View {
             .frame(width: size, height: size)
             .background(fill, in: Circle())
             .overlay(Circle().strokeBorder(stroke, lineWidth: 1.5))
-            .accessibilityLabel("Signal \(number), \(impact.shortLabel) impact")
+            .accessibilityLabel("Signal \(number), \(impact.label) impact")
     }
 
     private var fill: Color {
         switch impact {
-        case .high: Palette.amber
+        case .major, .high: Palette.amber
         case .medium: Palette.amber.opacity(0.22)
-        case .low: Palette.raised
+        case .minor, .low: Palette.raised
         }
     }
 
     private var foreground: Color {
         switch impact {
-        case .high: Palette.background
+        case .major, .high: Palette.background
         case .medium: Palette.amber
-        case .low: Palette.secondary
+        case .minor, .low: Palette.secondary
         }
     }
 
     private var stroke: Color {
         switch impact {
-        case .high: Palette.amber
+        case .major, .high: Palette.amber
         case .medium: Palette.amber.opacity(0.6)
-        case .low: Palette.border
+        case .minor, .low: Palette.border
         }
     }
 
     /// Chart rule colour for this impact.
     static func color(for impact: Impact) -> Color {
         switch impact {
-        case .high: Palette.amber
+        case .major, .high: Palette.amber
         case .medium: Palette.amber.opacity(0.55)
-        case .low: Palette.muted
+        case .minor, .low: Palette.muted
         }
     }
 }

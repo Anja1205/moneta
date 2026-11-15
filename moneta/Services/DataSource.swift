@@ -29,13 +29,13 @@ enum DataSource: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// A store for one signed-in user; their saved watchlist is kept apart from other users'.
-    func makeStore(userID: UUID? = nil) -> MonetaStore {
+    func makeStore(userID: UUID? = nil) -> MarketStore {
         switch self {
         case .demo:
-            MonetaStore(prices: MockPriceService(), monitor: MockWebMonitorService(), agent: MockSignalAgent(), userID: userID)
+            MarketStore(prices: MockPriceService(), monitor: MockWebMonitorService(), agent: MockSignalAgent(), userID: userID)
         case .live:
-            MonetaStore(prices: BackendPriceService(), monitor: BackendWebMonitorService(), agent: BackendSignalAgent(),
-                        userID: userID)
+            MarketStore(prices: BackendPriceService(), monitor: BackendWebMonitorService(), agent: BackendSignalAgent(),
+                        userID: userID, account: LiveAccount())
         }
     }
 }

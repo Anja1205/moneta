@@ -60,15 +60,15 @@ struct ChangeCapsule: View {
     }
 }
 
-/// Impact capsule: high = solid amber, medium = amber tint, low = grey.
+/// Impact capsule: high and major = solid amber, medium = amber tint, minor and low = grey.
 struct ImpactTag: View {
     let impact: Impact
 
     var body: some View {
         switch impact {
-        case .high: CapsuleTag(impact.label, systemImage: "exclamationmark.triangle.fill", color: Palette.amber, solid: true)
+        case .major, .high: CapsuleTag(impact.label, systemImage: "exclamationmark.triangle.fill", color: Palette.amber, solid: true)
         case .medium: CapsuleTag(impact.label, systemImage: "eye", color: Palette.amber)
-        case .low: CapsuleTag(impact.label, color: Palette.muted)
+        case .minor, .low: CapsuleTag(impact.label, color: Palette.muted)
         }
     }
 }

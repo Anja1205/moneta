@@ -3,7 +3,7 @@ import SwiftUI
 
 struct SignalDetailView: View {
     let signalID: UUID
-    @Environment(MonetaStore.self) private var store
+    @Environment(MarketStore.self) private var store
     @State private var showingSource = false
 
     private var signal: Signal? { store.signals.first { $0.id == signalID } }
@@ -30,8 +30,12 @@ struct SignalDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Tags and headline
                 VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center, spacing: 12) {
+                        DirectionBadge(direction: signal.direction, large: true)
+                        Spacer(minLength: 8)
+                        ImpactMeter(impact: signal.impact, direction: signal.direction, dotSize: 8)
+                    }
                     FlowLayout(spacing: 8) {
-                        ImpactTag(impact: signal.impact)
                         CapsuleTag(signal.source.label, systemImage: signal.source.symbol)
                         CapsuleTag(Fmt.when(signal.time), systemImage: "clock", color: Palette.muted)
                     }
@@ -236,7 +240,7 @@ private struct DiffRow: View {
 }
 
 #Preview {
-    let store = MonetaStore.preview()
+    let store = MarketStore.preview()
     NavigationStack {
         SignalDetailView(signalID: MockData.seeded[0].change.id)
     }

@@ -176,8 +176,30 @@ final class BackendPriceService: PriceService {
 
     // MARK: History
 
+    /// Real candles from the `price-history` Edge Function. Falls back to the backend's own
+    /// `price_history` snapshots when the function isn't deployed or fails.
     func history(for ticker: String, range: ChartRange) async throws -> [PricePoint] {
         let ticker = ticker.uppercased()
+        if let candles = try? await candles(ticker, range: range), candles.count >= 2 {
+            return candles
+        }
+        return try await snapshots(ticker, range: range)
+    }
+
+    private func candles(_ ticker: String, range: ChartRange) async throws -> [PricePoint] {
+        struct Body: Encodable { let ticker: String; let range: String }
+        struct Response: Decodable {
+            struct Point: Decodable { let t: String; let p: Double }
+            let points: [Point]
+        }
+        let response: Response = try await client.invoke("price-history", body: Body(ticker: ticker, range: range.rawValue))
+        return response.points.compactMap { point in
+            guard point.p.isFinite, let date = BackendDate.parse(point.t) else { return nil }
+            return PricePoint(date: date, price: point.p)
+        }
+    }
+
+    private func snapshots(_ ticker: String, range: ChartRange) async throws -> [PricePoint] {
         if stockIDs[ticker] == nil { _ = try await stocks([ticker]) }
         guard let id = stockIDs[ticker] else { return [] }
 

@@ -1,39 +1,59 @@
 import SwiftUI
 
-/// Every signal across watched stocks, newest first.
-struct SignalsView: View {
-    @Environment(MonetaStore.self) private var store
-    @State private var filter: Filter = .all
+/// "Important" (impact 3+) or every signal. Shared by the feed and the stock timeline.
+enum ImpactFilter: String, CaseIterable, Identifiable {
+    case important = "Important", all = "All"
+    var id: String { rawValue }
 
-    enum Filter: String, CaseIterable, Identifiable {
-        case all = "All", high = "High", medium = "Medium", low = "Low"
-        var id: String { rawValue }
-        var impact: Impact? {
-            switch self {
-            case .all: nil
-            case .high: .high
-            case .medium: .medium
-            case .low: .low
-            }
+    func keeps(_ signal: Signal) -> Bool { self == .all || signal.impact.isImportant }
+}
+
+/// Direction chips on the feed.
+enum DirectionFilter: String, CaseIterable, Identifiable {
+    case all = "All", bullish = "Bullish", bearish = "Bearish"
+    var id: String { rawValue }
+
+    func keeps(_ signal: Signal) -> Bool {
+        switch self {
+        case .all: true
+        case .bullish: signal.direction == .bullish
+        case .bearish: signal.direction == .bearish
         }
     }
+}
+
+/// Every signal across watched stocks, newest first.
+struct SignalsView: View {
+    @Environment(MarketStore.self) private var store
+    @AppStorage("feed.impactFilter") private var filter: ImpactFilter = .important
+    @AppStorage("feed.directionFilter") private var direction: DirectionFilter = .all
 
     private var visible: [Signal] {
-        store.signals.filter { filter.impact == nil || $0.impact == filter.impact }
+        store.signals.filter { filter.keeps($0) && direction.keeps($0) }
+    }
+
+    /// "No important bullish news right now — Moneta is watching."
+    private var emptyText: String {
+        let kind = [filter == .important ? "important" : nil, direction == .all ? nil : direction.rawValue.lowercased()]
+            .compactMap { $0 }.joined(separator: " ")
+        return kind.isEmpty ? "No news right now — Moneta is watching." : "No \(kind) news right now — Moneta is watching."
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Metrics.spacing) {
-                    GlassSegmented(options: Filter.allCases, selection: $filter, title: \.rawValue,
-                                   accessibilityLabel: "Filter by impact")
+                    GlassSegmented(options: ImpactFilter.allCases, selection: $filter, title: \.rawValue,
+                                   accessibilityLabel: "Show")
+                    DirectionChips(selection: $direction)
                         .padding(.bottom, 6)
 
-                    if visible.isEmpty {
+                    if !store.isLoaded {
+                        ForEach(0..<4, id: \.self) { _ in ShimmerRow() }
+                    } else if visible.isEmpty {
                         ContentUnavailableView(
-                            "No signals", systemImage: "waveform.path.ecg",
-                            description: Text(filter == .all ? "New signals appear here the moment Moneta spots them." : "No \(filter.rawValue.lowercased())-impact signals today.")
+                            "Nothing here yet", systemImage: "eye",
+                            description: Text(emptyText)
                         )
                         .padding(.top, 40)
                     }
@@ -63,6 +83,7 @@ struct SignalsView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
+            .refreshable { await store.refresh(fetchNews: true) }
             .monetaScreen()
             .navigationTitle("Signals")
             .monetaDestinations()
@@ -70,9 +91,50 @@ struct SignalsView: View {
     }
 }
 
+/// Small capsule chips: All / Bullish / Bearish.
+struct DirectionChips: View {
+    @Binding var selection: DirectionFilter
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(DirectionFilter.allCases) { option in
+                let isSelected = option == selection
+                let color: Color = switch option {
+                case .all: Palette.text
+                case .bullish: Palette.up
+                case .bearish: Palette.down
+                }
+                Button {
+                    withAnimation(.snappy) { selection = option }
+                } label: {
+                    HStack(spacing: 4) {
+                        if option != .all {
+                            Image(systemName: option == .bullish ? "arrow.up.right" : "arrow.down.right")
+                                .font(.system(size: 10, weight: .heavy))
+                        }
+                        Text(option.rawValue)
+                    }
+                    .font(.mCaption)
+                    .foregroundStyle(isSelected ? Palette.background : color)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 32)
+                    .background(isSelected ? color : Palette.tint(color), in: Capsule())
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+            Spacer(minLength: 0)
+        }
+        .sensoryFeedback(.selection, trigger: selection)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Direction")
+    }
+}
+
 #Preview {
     SignalsView()
-        .environment(MonetaStore.preview())
+        .environment(MarketStore.preview())
         .environment(AppRouter())
         .preferredColorScheme(.dark)
 }

@@ -248,8 +248,10 @@ final class MockWebMonitorService: WebMonitorService {
             diff: template.diff.map { DiffLine(kind: $0.0, text: $0.1) },
             facts: template.facts
         )
-        MockRegistry.shared.assessments[change.id] = SignalAssessment(impact: template.impact, why: template.why)
         let move = template.move.lowerBound == template.move.upperBound ? 0 : Double.random(in: template.move, using: &rng)
+        MockRegistry.shared.assessments[change.id] = SignalAssessment(
+            impact: template.impact, why: template.why, direction: Direction(move: move)
+        )
         market.addReaction(ticker, after: change.detectedAt, lead: Int.random(in: 12...35, using: &rng), move: move)
         return change
     }

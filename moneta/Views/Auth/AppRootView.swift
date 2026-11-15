@@ -14,6 +14,10 @@ struct AppRootView: View {
     }
 
     private var phase: Phase {
+        #if DEBUG
+        if LaunchRoute.value == "splash" { return .splash }
+        if LaunchRoute.value?.hasPrefix("auth") == true { return .signedOut }
+        #endif
         if auth.isCheckingSession { return .splash }
         guard let userID = auth.userID else { return .signedOut }
         guard let profile = auth.profile else {
@@ -54,7 +58,7 @@ struct AppRootView: View {
 /// Owns the store for one user and data source. Only created once the user is onboarded,
 /// so prices and realtime start only then.
 private struct StoreHost: View {
-    @State private var store: MonetaStore
+    @State private var store: MarketStore
 
     init(source: DataSource, userID: UUID) {
         _store = State(initialValue: source.makeStore(userID: userID))
@@ -63,8 +67,14 @@ private struct StoreHost: View {
     var body: some View {
         RootView()
             .environment(store)
-            .task { await store.start() }
-            .onDisappear { store.stop() }
+            .task {
+                store.onAlert = { [store] signal in
+                    AlertService.shared.handle(signal, logoURL: store.company(signal.ticker)?.logoURL)
+                }
+                await store.start()
+                await AlertService.shared.start(latest: store.latestWarning)
+            }
+            .onDisappear { store.reset() }
     }
 }
 

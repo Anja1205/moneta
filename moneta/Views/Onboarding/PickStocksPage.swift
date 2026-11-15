@@ -175,6 +175,7 @@ struct CompanyPickRow: View {
                         .foregroundStyle(Brand.muted)
                 }
                 Spacer(minLength: 8)
+                ListPriceLabel(company: company)
                 AddToggleIcon(isOn: isSelected)
             }
             .padding(12)

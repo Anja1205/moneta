@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Timeline card: numbered pin, "time · source", the price move after it, title and the why.
+/// Timeline card: a direction bar on the left edge, numbered pin, "time · source", the direction
+/// badge, title, the why, then the impact meter and the price move after it.
+/// Impact 5 gets a soft glow in the direction colour; a fresh or re-scored card flashes amber.
 struct SignalTimelineCard: View {
     let signal: Signal
     let number: Int
@@ -9,8 +11,17 @@ struct SignalTimelineCard: View {
     var isFresh = false
     var isMuted = false
 
+    private var directionColor: Color { Palette.direction(signal.direction) }
+    private var isMajor: Bool { signal.impact == .major }
+
+    private var borderColor: Color {
+        if isFresh { return Palette.amber }
+        if isMajor { return directionColor.opacity(0.55) }
+        return Palette.border
+    }
+
     var body: some View {
-        Card(border: isFresh ? Palette.amber : Palette.border) {
+        Card(border: borderColor) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 10) {
                     SignalPin(number: number, impact: signal.impact)
@@ -33,7 +44,7 @@ struct SignalTimelineCard: View {
                             .foregroundStyle(Palette.muted)
                             .accessibilityLabel("Muted")
                     }
-                    moveView
+                    DirectionBadge(direction: signal.direction)
                 }
                 Text(signal.title)
                     .font(.mHeadline)
@@ -43,9 +54,25 @@ struct SignalTimelineCard: View {
                     .font(.mCallout)
                     .foregroundStyle(Palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .center) {
+                    ImpactMeter(impact: signal.impact, direction: signal.direction)
+                    Spacer(minLength: 8)
+                    moveView
+                }
+                .padding(.top, 2)
             }
         }
-        .shadow(color: isFresh ? Palette.amber.opacity(0.25) : .clear, radius: 16)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(directionColor)
+                .frame(width: 3)
+                .accessibilityHidden(true)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+        .shadow(color: isFresh ? Palette.amber.opacity(0.25) : isMajor ? directionColor.opacity(0.28) : .clear,
+                radius: isMajor && !isFresh ? 14 : 16)
+        .animation(.easeOut(duration: 0.35), value: isFresh)
+        .animation(.easeOut(duration: 0.35), value: signal)
         .contentShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens the signal")
@@ -66,9 +93,10 @@ struct SignalTimelineCard: View {
 
 #Preview {
     let seeded = MockData.seeded[0]
-    let signal = Signal(id: seeded.change.id, ticker: "VNTR", source: .investor, impact: .high,
+    let signal = Signal(id: seeded.change.id, ticker: "VNTR", source: .investor, impact: .major,
                         time: seeded.change.detectedAt, title: seeded.change.title, why: seeded.assessment.why,
-                        url: seeded.change.url, facts: seeded.change.facts, diff: seeded.change.diff)
+                        url: seeded.change.url, facts: seeded.change.facts, diff: seeded.change.diff,
+                        direction: .bullish)
     SignalTimelineCard(signal: signal, number: 1,
                        reaction: MarketReaction(signalTime: signal.time, move: 0.028, at: signal.time.addingTimeInterval(1680)))
         .padding()

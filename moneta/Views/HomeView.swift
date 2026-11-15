@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct HomeView: View {
-    @Environment(MonetaStore.self) private var store
+    @Environment(MarketStore.self) private var store
     @Environment(AppRouter.self) private var router
+    @Environment(AuthService.self) private var auth
     @Environment(\.dynamicTypeSize) private var typeSize
 
     private var columns: [GridItem] {
@@ -17,6 +18,11 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     header
+
+                    if let portfolio = store.portfolio {
+                        PortfolioHeader(portfolio: portfolio)
+                            .transition(.opacity)
+                    }
 
                     if let warning = store.latestWarning {
                         NavigationLink(value: Route.signal(warning.id)) {
@@ -40,38 +46,30 @@ struct HomeView: View {
                         }
                     }
 
-                    if let message = store.errorMessage {
-                        Card(fill: Palette.tint(Palette.down), border: Palette.down.opacity(0.4)) {
-                            HStack(alignment: .top, spacing: 10) {
-                                Text(message)
-                                    .font(.mFootnote)
-                                    .foregroundStyle(Palette.text)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 4)
-                                Button {
-                                    store.errorMessage = nil
-                                } label: {
-                                    Image(systemName: "xmark").frame(width: 44, height: 44)
-                                }
-                                .foregroundStyle(Palette.secondary)
-                                .accessibilityLabel("Dismiss")
-                            }
-                        }
-                    }
-
                     VStack(alignment: .leading, spacing: Metrics.spacing) {
                         SectionTitle(text: "Your stocks", trailing: "\(store.watched.count) watching")
                         LazyVGrid(columns: columns, spacing: Metrics.spacing) {
+                            if !store.isLoaded {
+                                ForEach(0..<4, id: \.self) { _ in SkeletonTile() }
+                            }
                             ForEach(store.watched) { company in
                                 NavigationLink(value: Route.stock(company.ticker)) {
                                     StockTile(
                                         company: company,
                                         quote: store.quotes[company.ticker],
                                         points: store.intraday[company.ticker] ?? [],
-                                        newCount: store.newCount(for: company.ticker)
+                                        newCount: store.newCount(for: company.ticker),
+                                        latest: store.latestImportant(for: company.ticker),
+                                        sentiment: store.sentiment[company.ticker]?.score
                                     )
                                 }
                                 .buttonStyle(PressableStyle())
+                                // Grid tiles can't swipe; long-press to remove.
+                                .contextMenu {
+                                    Button("Stop watching", systemImage: "eye.slash", role: .destructive) {
+                                        Task { await store.removeFromWatchlist(company.ticker) }
+                                    }
+                                }
                             }
                             Button {
                                 router.showStockSearch = true
@@ -88,7 +86,9 @@ struct HomeView: View {
                 .padding(.bottom, 24)
                 .animation(.spring(response: 0.5, dampingFraction: 0.8), value: store.latestWarning?.id)
                 .animation(.spring(response: 0.45, dampingFraction: 0.8), value: store.watched.map(\.ticker))
+                .animation(.spring(response: 0.45, dampingFraction: 0.8), value: store.portfolio)
             }
+            .refreshable { await store.refresh() }
             .monetaScreen()
             .toolbar(.hidden, for: .navigationBar)
             .monetaDestinations()
@@ -109,18 +109,39 @@ struct HomeView: View {
         #endif
     }
 
+    /// "Good evening, Anja" (first name only), or just the greeting without a name.
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: .now)
+        let part = switch hour {
+        case 5..<12: "Good morning"
+        case 12..<18: "Good afternoon"
+        default: "Good evening"
+        }
+        let first = auth.displayName.split(separator: " ").first.map(String.init) ?? ""
+        return first.isEmpty ? part : "\(part), \(first)"
+    }
+
     private var header: some View {
         HStack(spacing: 12) {
-            Image(systemName: "eye.fill")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Palette.background)
+            // The app icon; a hairline border keeps its dark tile visible on the dark screen.
+            Image("MonetaMark")
+                .resizable()
+                .interpolation(.high)
+                .scaledToFill()
                 .frame(width: 44, height: 44)
-                .background(Palette.amber, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                )
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Moneta")
+                // The M mark already says Moneta; the title greets the user instead.
+                Text(greeting)
                     .font(.mTitle)
                     .foregroundStyle(Palette.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     .accessibilityAddTraits(.isHeader)
                 HStack(spacing: 6) {
                     LiveDot()
@@ -175,6 +196,7 @@ private struct LatestWarningCard: View {
                         .font(.mCaption)
                         .foregroundStyle(Palette.muted)
                     Spacer(minLength: 4)
+                    DirectionBadge(direction: signal.direction)
                     ImpactTag(impact: signal.impact)
                 }
                 HStack(spacing: 6) {
@@ -212,7 +234,8 @@ private struct LatestWarningCard: View {
 
 #Preview {
     HomeView()
-        .environment(MonetaStore.preview())
+        .environment(MarketStore.preview())
         .environment(AppRouter())
+        .environment(AuthService())
         .preferredColorScheme(.dark)
 }

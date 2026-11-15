@@ -4,7 +4,7 @@ import SwiftUI
 struct AddStockSheet: View {
     var preselected: Company?
 
-    @Environment(MonetaStore.self) private var store
+    @Environment(MarketStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var results: [Company] = []
@@ -256,6 +256,6 @@ struct SourceToggleTile: View {
             AddStockSheet(preselected: MockData.companies[3])
                 .presentationDetents([.large])
         }
-        .environment(MonetaStore.preview())
+        .environment(MarketStore.preview())
         .preferredColorScheme(.dark)
 }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum AppTab: Hashable {
-    case home, signals, settings, search
+    case home, markets, signals, settings, search
 }
 
 /// Pushed screens.

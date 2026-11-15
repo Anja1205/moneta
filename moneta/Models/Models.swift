@@ -15,8 +15,15 @@ nonisolated struct Company: Identifiable, Hashable, Codable, Sendable {
     var domain: String? = nil
     /// Where a search hit came from: "catalog" or "context.dev" (live web).
     var source: String? = nil
-    /// Position in the Top 20.
+    /// Position in the Top 20 / Top 30.
     var rank: Int? = nil
+    /// `stocks.id` once the backend tracks it (watchlist, sentiment, price history).
+    var stockID: UUID? = nil
+    /// Price from the `companies` list (onboarding, search, Markets), when known.
+    var listPrice: Double? = nil
+    /// `price_change_pct` in percent (0.39 = +0.39%).
+    var listChangePct: Double? = nil
+    var listCurrency: String? = nil
 
     var id: String { ticker }
 
@@ -76,24 +83,51 @@ nonisolated enum SignalSource: String, CaseIterable, Identifiable, Hashable, Sen
     }
 }
 
+/// The backend's 1–5 score: 1 noise, 2 minor, 3 worth knowing, 4 important, 5 likely to move
+/// the stock today.
 nonisolated enum Impact: Int, CaseIterable, Comparable, Hashable, Sendable {
-    case low = 1, medium = 2, high = 3
+    case low = 1, minor = 2, medium = 3, high = 4, major = 5
 
     static func < (lhs: Impact, rhs: Impact) -> Bool { lhs.rawValue < rhs.rawValue }
 
+    /// Any score, clamped to 1–5.
+    init(score: Int) {
+        self = Impact(rawValue: min(max(score, 1), 5)) ?? .medium
+    }
+
+    /// The one label every view uses: "Low", "Minor", "Medium", "High", "Major".
     var label: String {
         switch self {
-        case .high: "High signal"
-        case .medium: "Medium signal"
-        case .low: "Low signal"
+        case .low: "Low"
+        case .minor: "Minor"
+        case .medium: "Medium"
+        case .high: "High"
+        case .major: "Major"
         }
     }
 
-    var shortLabel: String {
+    /// "High · 4/5"
+    var scoreLabel: String { "\(label) · \(rawValue)/5" }
+
+    /// Worth knowing or more (3+): what the "Important" filters keep.
+    var isImportant: Bool { self >= .medium }
+}
+
+/// Which way a signal points for the company's share price.
+nonisolated enum Direction: String, CaseIterable, Hashable, Sendable {
+    case bullish, bearish, neutral
+
+    init(_ raw: String?) {
+        self = Direction(rawValue: raw?.lowercased() ?? "") ?? .neutral
+    }
+
+    var label: String { rawValue.capitalized }
+
+    var symbol: String {
         switch self {
-        case .high: "High"
-        case .medium: "Medium"
-        case .low: "Low"
+        case .bullish: "arrow.up.right"
+        case .bearish: "arrow.down.right"
+        case .neutral: "arrow.right"
         }
     }
 }
@@ -140,6 +174,8 @@ nonisolated struct WebChange: Identifiable, Hashable, Sendable {
     let diff: [DiffLine]
     /// Context the monitor knows, e.g. "Page unchanged for 41 days".
     let facts: [String]
+    /// False for rows the backend re-scored rather than newly found; those never alert.
+    var isNew = true
 }
 
 /// A change the agent decided matters, with its one-sentence "why".
@@ -154,6 +190,8 @@ nonisolated struct Signal: Identifiable, Hashable, Sendable {
     let url: URL?
     let facts: [String]
     let diff: [DiffLine]
+    var direction: Direction = .neutral
+    var isNew = true
 }
 
 /// How the price moved after a signal, measured from the intraday series.

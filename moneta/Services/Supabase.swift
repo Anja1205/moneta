@@ -17,7 +17,7 @@ nonisolated enum MonetaAPI {
     static func featuredCompanies() async throws -> [Company] {
         let rows: [CompanyRow] = try await supabase
             .from("companies")
-            .select("ticker,name,domain,rank,logo_url,brand_color")
+            .select("ticker,name,domain,rank,logo_url,brand_color,price,price_change_pct,currency")
             .eq("featured", value: true)
             .order("rank")
             .execute()
@@ -51,6 +51,9 @@ nonisolated enum MonetaAPI {
             if let brand = branding[ticker] {
                 company.logoURL = brand.logoURL
                 company.brandHex = brand.brandHex ?? Brand.goldHex
+                company.listPrice = brand.price
+                company.listChangePct = brand.price_change_pct
+                company.listCurrency = brand.currency
             }
             return company
         }
@@ -74,7 +77,7 @@ nonisolated enum MonetaAPI {
         guard !tickers.isEmpty else { return [:] }
         let rows: [CompanyRow]? = try? await supabase
             .from("companies")
-            .select("ticker,name,domain,rank,logo_url,brand_color")
+            .select("ticker,name,domain,rank,logo_url,brand_color,price,price_change_pct,currency")
             .in("ticker", values: tickers)
             .execute()
             .value
@@ -88,6 +91,26 @@ nonisolated enum MonetaAPI {
         let rank: Int?
         let logo_url: String?
         let brand_color: String?
+        let price: Double?
+        let price_change_pct: Double?
+        let currency: String?
+
+        enum CodingKeys: String, CodingKey {
+            case ticker, name, domain, rank, logo_url, brand_color, price, price_change_pct, currency
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            ticker = try c.decode(String.self, forKey: .ticker)
+            name = try c.decode(String.self, forKey: .name)
+            domain = try c.decodeIfPresent(String.self, forKey: .domain)
+            rank = try? c.decodeIfPresent(Int.self, forKey: .rank)
+            logo_url = try c.decodeIfPresent(String.self, forKey: .logo_url)
+            brand_color = try c.decodeIfPresent(String.self, forKey: .brand_color)
+            price = c.flexibleDouble(.price)
+            price_change_pct = c.flexibleDouble(.price_change_pct)
+            currency = try c.decodeIfPresent(String.self, forKey: .currency)
+        }
 
         var logoURL: URL? { logo_url.flatMap(URL.init(string:)) }
         var brandHex: UInt32? { brand_color.flatMap(UInt32.init(hexString:)) }
@@ -97,6 +120,9 @@ nonisolated enum MonetaAPI {
                                   logoURL: logoURL, domain: domain)
             company.rank = rank
             company.source = "catalog"
+            company.listPrice = price
+            company.listChangePct = price_change_pct
+            company.listCurrency = currency
             return company
         }
     }
