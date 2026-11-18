@@ -26,6 +26,7 @@ Moneta watches the live web around the stocks you own — news, investor pages, 
 1. Open `moneta.xcodeproj` in Xcode. Swift Package Manager resolves [supabase-swift](https://github.com/supabase/supabase-swift) (2.55 or later) on first open.
 2. Select the `moneta` scheme and an iPhone simulator or device.
 3. Build and run. Create an account in the app, pick a few stocks, and you're in.
+4. No backend to hand? Switch **Settings - Data source** to *Demo data*, or launch with `-dataSource demo`, and the app runs fictional companies on a simulated market.
 
 The Supabase URL and the publishable key are in `moneta/Services/BackendConfig.swift`. The publishable key is meant for clients and only reaches what row-level security allows. Never put a secret or service-role key in the app.
 
